@@ -1,0 +1,87 @@
+/* Accordion */
+.zAccordion {
+    &-reset {
+        .accordion {
+            &-item {
+                border: none;
+                border-radius: 0;
+            }
+            &-body {
+                padding: 0;
+            }
+            &-button {
+                border-radius: 0 !important;
+                box-shadow: none !important;
+                background-color: transparent !important;
+                padding: 0 !important;
+            }
+        }
+    }
+    &-one {
+        display: flex;
+        flex-direction: column;
+        row-gap: toRem(20);
+        .row {
+            div {
+                .accordion-item {
+                    margin-bottom: toRem(20);
+                    &:last-child {
+                        margin-bottom: 0;
+                    }
+                }
+            }
+        }
+        .accordion {
+            &-item {
+                position: relative;
+                width: 100%;
+                border: none;
+                border-radius: toRem(20);
+                box-shadow: none;
+                background-color: transparent;
+                border: 1px solid $stroke;
+                &:has(.accordion-collapse.show) {
+                    background-color: transparent;
+                    border-color: $stroke;
+                }
+            }
+            &-body {
+                padding: toRem(0) toRem(30) toRem(22);
+                @include fontFamily(16, $fw_regular, 24, $body-font-color);
+                @media screen and (max-width: 767px) {
+                    padding: toRem(0) toRem(28) toRem(32) !important;
+                }
+                @media screen and (max-width: 575px) {
+                    padding: toRem(0) toRem(10) toRem(10) !important;
+                    font-size: toRem(16);
+                }
+            }
+            &-button {
+                padding: toRem(26) toRem(28) !important;
+                @include fontFamily(18, $fw_medium, 28, $heading-color);
+                column-gap: toRem(50);
+                @media screen and (max-width: 767px) {
+                    padding: toRem(20) !important;
+                }
+                @media screen and (max-width: 575px) {
+                    padding: toRem(10) !important;
+                    font-size: toRem(16);
+                }
+                &.collapsed {
+                    &::after {
+                        background-image: url(../images/icon/accordion-icon.png);
+                    }
+                }
+                &:not(&.collapsed) {
+                    color: $heading-color;
+                }
+                &::after {
+                    background-image: url(../images/icon/accordion-icon.png);
+                    transform: rotate(0deg);
+                    background-size: toRem(24);
+                    background-position: center;
+                }
+            }
+        }
+    }
+}
