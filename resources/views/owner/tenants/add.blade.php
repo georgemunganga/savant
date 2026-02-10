@@ -143,11 +143,13 @@
                                                             <div class="row">
                                                                 <div class="col-md-6 mb-25">
                                                                     <label
-                                                                        class="label-text-title color-heading font-medium mb-2">{{ __('Age') }}
+                                                                        class="label-text-title color-heading font-medium mb-2">{{ __('Gender') }}
                                                                         <span class="text-danger">*</span></label>
-                                                                    <input type="number" name="age"
-                                                                        class="form-control"
-                                                                        placeholder="{{ __('Age') }}">
+                                                                    <select name="gender" class="form-control">
+                                                                        <option value="male">{{ __('Male') }}</option>
+                                                                        <option value="female">{{ __('Female') }}</option>
+                                                                        <option value="other">{{ __('Other') }}</option>
+                                                                    </select>
                                                                 </div>
                                                                 <div class="col-md-6 mb-25">
                                                                     <label
@@ -156,6 +158,16 @@
                                                                     <input type="number" name="family_member"
                                                                         class="form-control"
                                                                         placeholder="{{ __('Family Members') }}">
+                                                                </div>
+                                                            </div>
+                                                            <div class="row">
+                                                                <div class="col-md-6 mb-25">
+                                                                    <label
+                                                                        class="label-text-title color-heading font-medium mb-2">{{ __('Date of Birth') }}
+                                                                        <span class="text-danger">*</span></label>
+                                                                    <input type="date" name="date_of_birth"
+                                                                        class="form-control"
+                                                                        placeholder="{{ __('Date of Birth') }}">
                                                                 </div>
                                                             </div>
                                                             <div class="row">

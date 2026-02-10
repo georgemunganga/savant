@@ -40,7 +40,8 @@ class TenantRequest extends FormRequest
                 'permanent_city_id' => 'required',
                 'permanent_zip_code' => 'required',
                 'family_member' => 'required|numeric',
-                'age' => 'numeric',
+                'date_of_birth' => 'required|date',
+                'gender' => 'required|in:male,female,other',
                 'job' => 'required',
                 'tenant_type' => 'required|in:person,student,company',
             ];

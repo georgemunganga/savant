@@ -401,11 +401,13 @@
                                                                 </div>
                                                                 <div class="col-md-4 mb-25">
                                                                     <label
-                                                                        class="label-text-title color-heading font-medium mb-2">{{ __('Age') }}</label>
-                                                                    <input type="text" class="form-control"
-                                                                        name="age" placeholder="{{ __('Age') }}"
-                                                                        value="{{ $tenant->age }}">
-                                                                    @error('age')
+                                                                        class="label-text-title color-heading font-medium mb-2">{{ __('Gender') }}</label>
+                                                                    <select class="form-control" name="gender">
+                                                                        <option value="male" {{ $tenant->gender == 'male' ? 'selected' : '' }}>{{ __('Male') }}</option>
+                                                                        <option value="female" {{ $tenant->gender == 'female' ? 'selected' : '' }}>{{ __('Female') }}</option>
+                                                                        <option value="other" {{ $tenant->gender == 'other' ? 'selected' : '' }}>{{ __('Other') }}</option>
+                                                                    </select>
+                                                                    @error('gender')
                                                                         <span class="text-danger">{{ $message }}</span>
                                                                     @enderror
                                                                 </div>

@@ -89,7 +89,8 @@ class ProfileController extends Controller
                 $tenant = Tenant::where('user_id', auth()->id())->first();
                 $tenant->job = $request->job;
                 $tenant->family_member = $request->family_member;
-                $tenant->age = $request->age;
+                $tenant->date_of_birth = $request->date_of_birth;
+                $tenant->gender = $request->gender;
                 if ($request->has('tenant_type')) {
                     $tenant->tenant_type = $request->tenant_type;
                 }

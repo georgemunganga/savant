@@ -415,7 +415,8 @@ class TenantService
             $tenant->owner_user_id = getOwnerUserId();
             $tenant->job = $request->job;
             $tenant->tenant_type = $request->tenant_type ?? 'person';
-            $tenant->age = $request->age;
+            $tenant->gender = $request->gender;
+            $tenant->date_of_birth = $request->date_of_birth;
             $tenant->family_member = $request->family_member;
             $tenant->status = TENANT_STATUS_DRAFT;
             $tenant->save();

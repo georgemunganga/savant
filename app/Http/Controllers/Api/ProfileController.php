@@ -22,7 +22,7 @@ class ProfileController extends Controller
     public function profileDetails()
     {
         if (auth()->user()->role == USER_ROLE_TENANT) {
-            $data['tenant'] = Tenant::where('user_id', auth()->id())->select(['id', 'job', 'family_member', 'age', 'tenant_type'])->first();
+            $data['tenant'] = Tenant::where('user_id', auth()->id())->select(['id', 'job', 'family_member', 'gender', 'date_of_birth', 'tenant_type'])->first();
             $data['details'] = TenantDetails::where('tenant_id', $data['tenant']->id)->first();
             $data['details']?->makeHidden(['created_at', 'updated_at', 'deleted_at']);
         } elseif (auth()->user()->role == USER_ROLE_OWNER) {
@@ -57,7 +57,8 @@ class ProfileController extends Controller
                 $tenant = Tenant::where('user_id', auth()->id())->first();
                 $tenant->job = $request->job;
                 $tenant->family_member = $request->family_member;
-                $tenant->age = $request->age;
+                $tenant->date_of_birth = $request->date_of_birth;
+                $tenant->gender = $request->gender;
                 if ($request->has('tenant_type')) {
                     $tenant->tenant_type = $request->tenant_type;
                 }

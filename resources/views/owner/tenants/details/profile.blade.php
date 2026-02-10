@@ -129,10 +129,18 @@
                                                 </div>
                                                 <div class="row account-settings-info-item">
                                                     <div class="col-md-6 col-lg-4 col-xl-4 col-xxl-2">
-                                                        <p class="color-heading">{{ __('Age') }}:</p>
+                                                        <p class="color-heading">{{ __('Gender') }}:</p>
                                                     </div>
                                                     <div class="col-md-6 col-lg-8 col-xl-8 col-xxl-10">
-                                                        <p>{{ $tenant->age }}</p>
+                                                        <p>{{ $tenant->gender ? ucfirst($tenant->gender) : __('N/A') }}</p>
+                                                    </div>
+                                                </div>
+                                                <div class="row account-settings-info-item">
+                                                    <div class="col-md-6 col-lg-4 col-xl-4 col-xxl-2">
+                                                        <p class="color-heading">{{ __('Date of Birth') }}:</p>
+                                                    </div>
+                                                    <div class="col-md-6 col-lg-8 col-xl-8 col-xxl-10">
+                                                        <p>{{ $tenant->date_of_birth ?? __('N/A') }}</p>
                                                     </div>
                                                 </div>
                                                 <div class="row account-settings-info-item">

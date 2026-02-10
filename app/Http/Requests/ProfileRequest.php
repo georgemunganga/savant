@@ -33,6 +33,8 @@ class ProfileRequest extends FormRequest
             'last_name' => 'required|max:191',
             'email' => 'required|email|max:191|unique:users,email,' . $authId,
             'contact_number' => 'bail|numeric|unique:users,contact_number,' . $authId,
+            'date_of_birth' => 'nullable|date',
+            'gender' => 'nullable|in:male,female,other',
         ];
     }
 
