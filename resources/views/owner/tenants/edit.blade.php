@@ -380,6 +380,23 @@
                                                             <div class="row">
                                                                 <!-- Property Item Start -->
                                                                 <div class="col-md-12">
+                                                                    @if (isset($unitAssignments) && $unitAssignments->count())
+                                                                        <div class="mb-20">
+                                                                            <label
+                                                                                class="label-text-title color-heading font-medium mb-2 d-block">{{ __('Already Assigned Units') }}</label>
+                                                                            <div class="d-flex flex-wrap gap-2">
+                                                                                @foreach ($unitAssignments as $assignment)
+                                                                                    <span class="rounded-pill px-3 py-2 font-13 d-inline-flex flex-column align-items-center"
+                                                                                        style="background-color: var(--red-color); color: #fff; line-height: 1.2;">
+                                                                                        <span class="d-flex align-items-center">
+                                                                                            <i class="ri-home-4-line me-1"></i>{{ $assignment->unit?->unit_name ?? __('N/A') }}
+                                                                                        </span>
+                                                                                        <span style="font-size: 9px; opacity: 0.85;">{{ $assignment->property?->name ?? __('N/A') }}</span>
+                                                                                    </span>
+                                                                                @endforeach
+                                                                            </div>
+                                                                        </div>
+                                                                    @endif
                                                                     <div
                                                                         class="tenants-property-item-list-view mb-25 d-flex align-items-center">
                                                                         <a href="#"

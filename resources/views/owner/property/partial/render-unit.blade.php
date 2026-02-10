@@ -50,6 +50,14 @@
                                                 </div>
                                                 <div class="col-md-2 col-lg-2 col-xl-2 mb-25">
                                                     <label
+                                                        class="label-text-title color-heading font-medium mb-2">{{ __('Max Occupancy') }}</label>
+                                                    <input type="number" min="1" name="multiple[max_occupancy][]"
+                                                        value="{{ $propertyUnit->max_occupancy }}"
+                                                        class="form-control multiple-max_occupancy"
+                                                        placeholder="{{ __('Unlimited if empty') }}">
+                                                </div>
+                                                <div class="col-md-2 col-lg-2 col-xl-2 mb-25">
+                                                    <label
                                                         class="label-text-title color-heading font-medium mb-2">{{ __('Square Feet') }}</label>
                                                     <input type="text" name="multiple[square_feet][]"
                                                         value="{{ $propertyUnit->square_feet }}"
@@ -134,6 +142,13 @@
                                             </div>
                                             <div class="col-md-2 col-lg-2 col-xl-2 mb-25">
                                                 <label
+                                                    class="label-text-title color-heading font-medium mb-2">{{ __('Max Occupancy') }}</label>
+                                                <input type="number" min="1" name="multiple[max_occupancy][]"
+                                                    value="" class="form-control multiple-max_occupancy"
+                                                    placeholder="{{ __('Unlimited if empty') }}">
+                                            </div>
+                                            <div class="col-md-2 col-lg-2 col-xl-2 mb-25">
+                                                <label
                                                     class="label-text-title color-heading font-medium mb-2">{{ __('Square Feet') }}</label>
                                                 <input type="text" name="multiple[square_feet][]" value=""
                                                     class="form-control multiple-square_feet"
@@ -210,6 +225,13 @@
                                                 <input type="number" min="0" name="multiple[kitchen][]"
                                                     value="0" class="form-control multiple-kitchen"
                                                     placeholder="0">
+                                            </div>
+                                            <div class="col-md-2 col-lg-2 col-xl-2 mb-25">
+                                                <label
+                                                    class="label-text-title color-heading font-medium mb-2">{{ __('Max Occupancy') }}</label>
+                                                <input type="number" min="1" name="multiple[max_occupancy][]"
+                                                    value="" class="form-control multiple-max_occupancy"
+                                                    placeholder="{{ __('Unlimited if empty') }}">
                                             </div>
                                             <div class="col-md-2 col-lg-2 col-xl-2 mb-25">
                                                 <label

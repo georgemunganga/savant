@@ -65,6 +65,8 @@ Route::group(['prefix' => 'owner', 'as' => 'owner.', 'middleware' => ['auth', 'o
 
     Route::group(['prefix' => 'tenant', 'as' => 'tenant.'], function () {
         Route::get('/', [TenantController::class, 'index'])->name('index')->middleware('can:Manage Tenant');
+        Route::get('bulk-assignment', [TenantController::class, 'bulkAssignment'])->name('bulk-assignment')->middleware('can:Manage Tenant');
+        Route::post('bulk-assignment/store', [TenantController::class, 'bulkAssignmentStore'])->name('bulk-assignment.store')->middleware('can:Manage Tenant');
         Route::get('create', [TenantController::class, 'create'])->name('create');
         Route::get('edit/{id}', [TenantController::class, 'edit'])->name('edit');
         Route::post('store', [TenantController::class, 'store'])->name('store');

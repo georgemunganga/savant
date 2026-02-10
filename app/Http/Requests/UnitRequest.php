@@ -28,6 +28,7 @@ class UnitRequest extends FormRequest
             'multiple.bedroom.*' => 'required',
             'multiple.bath.*' => 'required',
             'multiple.kitchen.*' => 'required',
+            'multiple.max_occupancy.*' => 'nullable|integer|min:1',
         ];
     }
 }

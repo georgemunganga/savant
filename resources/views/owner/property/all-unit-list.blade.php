@@ -41,7 +41,7 @@
                                                             <th data-priority="1">{{ __('Name') }}</th>
                                                             <th>{{ __('Image') }}</th>
                                                             <th>{{ __('Property') }}</th>
-                                                            <th>{{ __('Tenant') }}</th>
+                                                            <th>{{ __('Tenants') }}</th>
                                                             <th class="text-center">{{ __('Action') }}</th>
                                                         </tr>
                                                     </thead>
@@ -56,16 +56,19 @@
                                                                 </td>
                                                                 <td>{{ $unit->property_name }}</td>
                                                                 <td>
-                                                                    @if ($unit->first_name)
-                                                                        <span class="text-success">{{ $unit->first_name }}
-                                                                            {{ $unit->last_name }}</span>
+                                                                    @if (($unit->active_tenant_count ?? 0) > 0)
+                                                                        <span class="text-success">
+                                                                            {{ $unit->active_tenant_count }} {{ __('tenant(s)') }}
+                                                                        </span>
+                                                                        <div class="font-13 mt-1">
+                                                                            {{ $unit->active_tenant_names }}
+                                                                        </div>
                                                                     @else
-                                                                        <span
-                                                                            class="text-danger">{{ __('Not Available') }}</span>
+                                                                        <span class="text-danger">{{ __('No Active Tenant') }}</span>
                                                                     @endif
                                                                 </td>
                                                                 <td class="text-center">
-                                                                    @if (is_null($unit->first_name))
+                                                                    @if (($unit->active_tenant_count ?? 0) < 1)
                                                                         <button class="p-1 tbl-action-btn deleteItem"
                                                                             data-formid="delete_row_form_{{ $unit->id }}">
                                                                             <span class="iconify"
@@ -79,8 +82,14 @@
                                                                             <input type="hidden" name="_token"
                                                                                 value="{{ csrf_token() }}">
                                                                         </form>
+                                                                    @elseif(($unit->active_tenant_count ?? 0) == 1 && !is_null($unit->first_tenant_id))
+                                                                        <a href="{{ route('owner.tenant.details', [$unit->first_tenant_id, 'tab' => 'profile']) }}"
+                                                                            title="{{ __('View Tenant') }}">
+                                                                            <span class="iconify" data-icon="carbon:view-filled"></span>
+                                                                        </a>
                                                                     @else
-                                                                        <a href="{{route('owner.tenant.details', [$unit->tenantId, 'tab' => 'profile'])}}">
+                                                                        <a href="{{ route('owner.tenant.index', ['type' => 'all']) }}"
+                                                                            title="{{ __('View Tenants') }}">
                                                                             <span class="iconify" data-icon="carbon:view-filled"></span>
                                                                         </a>
                                                                     @endif

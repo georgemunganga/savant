@@ -146,8 +146,25 @@
                                         class="label-text-title color-heading font-medium mb-2">{{ __('Invoice Prefix') }}</label>
                                     <input type="text" name="name" value="INV" class="form-control">
                                 </div>
-                                <input type="hidden" name="property_id" value="{{ $tenant->property_id }}">
-                                <input type="hidden" name="property_unit_id" value="{{ $tenant->unit_id }}">
+                                <input type="hidden" name="tenant_id" value="{{ $tenant->id }}">
+                                <input type="hidden" name="property_id"
+                                    value="{{ optional($unitAssignments->first())->property_id }}">
+                                <input type="hidden" name="property_unit_id"
+                                    value="{{ optional($unitAssignments->first())->unit_id }}">
+                                <div class="col-md-12 mb-25">
+                                    <label
+                                        class="label-text-title color-heading font-medium mb-2">{{ __('Home / Unit') }}</label>
+                                    <select class="form-select flex-shrink-0" id="invoiceAssignmentSelect">
+                                        <option value="">--{{ __('Select Unit') }}--</option>
+                                        @foreach ($unitAssignments as $assignment)
+                                            <option value="{{ $assignment->unit_id }}"
+                                                data-property-id="{{ $assignment->property_id }}"
+                                                @if ($loop->first) selected @endif>
+                                                {{ $assignment->property?->name }} - {{ $assignment->unit?->unit_name }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </div>
                                 <div class="col-md-6 mb-25">
                                     <label
                                         class="label-text-title color-heading font-medium mb-2">{{ __('Month') }}</label>
@@ -288,6 +305,18 @@
             selector.find('.error-message').remove();
             selector.modal('show')
             selector.find('form').trigger('reset');
+            let assignment = selector.find('#invoiceAssignmentSelect option:selected');
+            if (assignment.length) {
+                selector.find('input[name=property_id]').val(assignment.data('property-id') || '');
+                selector.find('input[name=property_unit_id]').val(assignment.val() || '');
+            }
+        });
+
+        $(document).on('change', '#invoiceAssignmentSelect', function () {
+            const selected = $(this).find('option:selected');
+            const selector = $('#createNewInvoiceModal');
+            selector.find('input[name=property_id]').val(selected.data('property-id') || '');
+            selector.find('input[name=property_unit_id]').val(selected.val() || '');
         });
 
         $(document).on("click", ".add-field", function () {

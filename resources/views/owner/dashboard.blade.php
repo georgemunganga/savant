@@ -128,7 +128,7 @@
                                                                     <p class="font-13">{{ $property->address }}</p>
                                                                 </td>
                                                                 <td>{{ $property->number_of_unit }}</td>
-                                                                <td>{{ $property->number_of_unit - $property->total_tenant }}
+                                                                <td>{{ $property->number_of_unit - $property->occupied_unit }}
                                                                 </td>
                                                                 <td>{{ $property->total_tenant }}</td>
                                                                 <td>{{ $property->total_maintainers }}</td>

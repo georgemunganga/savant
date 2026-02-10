@@ -133,9 +133,12 @@
                                                     <th class="text-end">{{ $property->available_unit }}</th>
                                                 </tr>
                                                 <tr>
+                                                    <th>{{ __('Occupied Units') }}</th>
+                                                    <th class="text-end">{{ $property->number_of_unit - $property->available_unit }}</th>
+                                                </tr>
+                                                <tr>
                                                     <th>{{ __('Current Tenants') }}</th>
-                                                    <th class="text-end">
-                                                        {{ $property->number_of_unit - $property->available_unit }}</th>
+                                                    <th class="text-end">{{ $property->total_tenant }}</th>
                                                 </tr>
                                                 <tr>
                                                     <th>{{ __('Average Rent') }}</th>
@@ -219,8 +222,14 @@
                                                                 src="{{ assetUrl($propertyUnit->folder_name . '/' . $propertyUnit->file_name) }}">
                                                         </td>
                                                         <td>
-                                                            @if (@$propertyUnit->first_name != null)
-                                                                <span class="red-color">{{ __('Not Available') }}</span>
+                                                            @if (($propertyUnit->active_tenant_count ?? 0) > 0)
+                                                                <span class="red-color">{{ __('Occupied') }}</span>
+                                                                <div class="font-13 mt-1">
+                                                                    {{ $propertyUnit->active_tenant_count }} {{ __('tenant(s)') }}
+                                                                </div>
+                                                                <div class="font-13">
+                                                                    {{ $propertyUnit->active_tenant_names }}
+                                                                </div>
                                                             @else
                                                                 <span class="green-color">{{ __('Available') }}</span>
                                                             @endif

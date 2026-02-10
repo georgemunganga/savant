@@ -50,74 +50,92 @@
                                         <div class="account-settings-content-box">
                                             <div class="account-settings-info-box">
                                                 <!-- Property Item Start -->
-                                                <div class="col-md-12 col-lg-12 col-xl-12 col-xxl-12">
-                                                    <div
-                                                        class="property-item tenants-details-home-details-property-item bg-off-white border-bottom radius-10 radius-b-l-0 radius-b-r-0 mb-25">
-                                                        <a href="#"
-                                                            class="property-item-img-wrap d-block position-relative overflow-hidden radius-10">
-                                                            <div class="property-item-img">
-                                                                <img src="{{ $tenant->property?->thumbnail_image }}"
-                                                                    alt="" class="fit-image">
-                                                            </div>
-                                                        </a>
-                                                        <div class="property-item-content p-25 px-0">
+                                                @if (isset($unitAssignments) && $unitAssignments->count())
+                                                    @foreach ($unitAssignments as $assignment)
+                                                        <div class="col-md-12 col-lg-12 col-xl-12 col-xxl-12">
+                                                            <div
+                                                                class="property-item tenants-details-home-details-property-item bg-off-white border-bottom radius-10 radius-b-l-0 radius-b-r-0 mb-25">
+                                                                <a href="#"
+                                                                    class="property-item-img-wrap d-block position-relative overflow-hidden radius-10">
+                                                                    <div class="property-item-img">
+                                                                        <img src="{{ $assignment->property?->thumbnail_image }}"
+                                                                            alt="" class="fit-image">
+                                                                    </div>
+                                                                </a>
+                                                                <div class="property-item-content p-25 px-0">
 
-                                                            <div class="tenants-details-property-info-left">
-                                                                <h3 class="property-item-title">
-                                                                    <a href="#"
-                                                                        class="color-heading link-hover-effect">{{ $tenant->property_name }}</a>
-                                                                </h3>
-                                                                <div class="property-item-address d-flex mt-15">
-                                                                    <div class="flex-shrink-0 font-13">
-                                                                        <i class="ri-map-pin-2-fill"></i>
-                                                                    </div>
-                                                                    <div class="flex-grow-1 ms-1">
-                                                                        <p>{{ $tenant->property_address }}
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
-                                                                <div
-                                                                    class="property-item-info mt-15 bg-white theme-border py-3 px-2 radius-4">
-                                                                    <div class="row">
-                                                                        <div class="col-sm-6 col-md-6">
-                                                                            <div
-                                                                                class="property-info-item property-info-item-left font-14">
-                                                                                <i
-                                                                                    class="ri-home-5-fill me-1 "></i>{{ $tenant->unit_name }}
+                                                                    <div class="tenants-details-property-info-left">
+                                                                        <h3 class="property-item-title">
+                                                                            <a href="#"
+                                                                                class="color-heading link-hover-effect">{{ $assignment->property?->name }}</a>
+                                                                        </h3>
+                                                                        <div class="property-item-address d-flex mt-15">
+                                                                            <div class="flex-shrink-0 font-13">
+                                                                                <i class="ri-map-pin-2-fill"></i>
+                                                                            </div>
+                                                                            <div class="flex-grow-1 ms-1">
+                                                                                <p>{{ $assignment->property?->propertyDetail?->address }}
+                                                                                </p>
                                                                             </div>
                                                                         </div>
-                                                                        <div class="col-sm-6 col-md-6">
-                                                                            <div
-                                                                                class="property-info-item property-info-item-right font-14">
-                                                                                <i
-                                                                                    class="ri-checkbox-circle-fill me-1 "></i>
-                                                                                @if ($tenant->status == TENANT_STATUS_ACTIVE)
-                                                                                    {{ __('Currnetly Tenant') }}
-                                                                                @else
-                                                                                    {{ __('Deactivate Tenant') }}
-                                                                                @endif
+                                                                        <div
+                                                                            class="property-item-info mt-15 bg-white theme-border py-3 px-2 radius-4">
+                                                                            <div class="row">
+                                                                                <div class="col-sm-6 col-md-6">
+                                                                                    <div
+                                                                                        class="property-info-item property-info-item-left font-14">
+                                                                                        <i
+                                                                                            class="ri-home-5-fill me-1 "></i>{{ $assignment->unit?->unit_name }}
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div class="col-sm-6 col-md-6">
+                                                                                    <div
+                                                                                        class="property-info-item property-info-item-right font-14">
+                                                                                        <i
+                                                                                            class="ri-checkbox-circle-fill me-1 "></i>
+                                                                                        @if ($tenant->status == TENANT_STATUS_ACTIVE)
+                                                                                            {{ __('Currnetly Tenant') }}
+                                                                                        @else
+                                                                                            {{ __('Deactivate Tenant') }}
+                                                                                        @endif
+                                                                                    </div>
+                                                                                </div>
                                                                             </div>
                                                                         </div>
-                                                                    </div>
-                                                                </div>
-                                                                <div class="tenants-details-home-details-lease-date mt-15">
-                                                                    <div class="row">
-                                                                        <div class="col-md-6">
-                                                                            <h6><span
-                                                                                    class="theme-text-color me-2">{{ __('Lease Start Date') }}:</span>{{ $tenant->lease_start_date }}
-                                                                            </h6>
-                                                                        </div>
-                                                                        <div class="col-md-6">
-                                                                            <h6><span
-                                                                                    class="theme-text-color me-2">{{ __('Lease End Date') }}:</span>{{ $tenant->lease_end_date ?? __('Unlimited') }}
-                                                                            </h6>
+                                                                        <div class="tenants-details-home-details-lease-date mt-15">
+                                                                            <div class="row">
+                                                                                <div class="col-md-6">
+                                                                                    <h6><span
+                                                                                            class="theme-text-color me-2">{{ __('Lease Start Date') }}:</span>{{ $tenant->lease_start_date }}
+                                                                                    </h6>
+                                                                                </div>
+                                                                                <div class="col-md-6">
+                                                                                    <h6><span
+                                                                                            class="theme-text-color me-2">{{ __('Lease End Date') }}:</span>{{ $tenant->lease_end_date ?? __('Unlimited') }}
+                                                                                    </h6>
+                                                                                </div>
+                                                                            </div>
                                                                         </div>
                                                                     </div>
                                                                 </div>
                                                             </div>
                                                         </div>
+                                                    @endforeach
+                                                @else
+                                                    <div class="col-md-12 col-lg-12 col-xl-12 col-xxl-12">
+                                                        <div
+                                                            class="property-item tenants-details-home-details-property-item bg-off-white border-bottom radius-10 radius-b-l-0 radius-b-r-0 mb-25">
+                                                            <div class="property-item-content p-25 px-0">
+                                                                <div class="tenants-details-property-info-left">
+                                                                    <h3 class="property-item-title">
+                                                                        <a href="#"
+                                                                            class="color-heading link-hover-effect">{{ __('No unit assigned yet') }}</a>
+                                                                    </h3>
+                                                                </div>
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                </div>
+                                                @endif
                                                 <!-- Property Item End -->
 
                                                 <!-- Tenants Details Home Details Edit Rent Information Start -->

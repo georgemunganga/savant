@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\FileManager;
 use App\Models\MaintenanceRequest;
 use App\Models\Property;
+use App\Models\TenantUnitAssignment;
 use App\Traits\ResponseTrait;
 use Exception;
 use Illuminate\Support\Facades\DB;
@@ -64,12 +65,30 @@ class MaintenanceRequestService
 
     public function getAllDataByTenant()
     {
+        $tenant = auth()->user()->tenant;
+        $assignmentPairs = TenantUnitAssignment::query()
+            ->where('tenant_id', $tenant->id)
+            ->get(['property_id', 'unit_id']);
+
         $maintenance = MaintenanceRequest::query()
             ->join('properties', 'maintenance_requests.property_id', '=', 'properties.id')
             ->leftJoin('property_units', 'maintenance_requests.unit_id', '=', 'property_units.id')
             ->join('maintenance_issues', 'maintenance_requests.issue_id', '=', 'maintenance_issues.id')
-            ->where('maintenance_requests.property_id', auth()->user()->tenant->property_id)
-            ->where('maintenance_requests.unit_id', auth()->user()->tenant->unit_id)
+            ->where('maintenance_requests.owner_user_id', auth()->user()->owner_user_id)
+            ->where(function ($query) use ($assignmentPairs, $tenant) {
+                foreach ($assignmentPairs as $pair) {
+                    $query->orWhere(function ($subQuery) use ($pair) {
+                        $subQuery->where('maintenance_requests.property_id', $pair->property_id)
+                            ->where('maintenance_requests.unit_id', $pair->unit_id);
+                    });
+                }
+                if ($tenant->property_id && $tenant->unit_id) {
+                    $query->orWhere(function ($subQuery) use ($tenant) {
+                        $subQuery->where('maintenance_requests.property_id', $tenant->property_id)
+                            ->where('maintenance_requests.unit_id', $tenant->unit_id);
+                    });
+                }
+            })
             ->select('maintenance_requests.*', 'properties.name as property_name', 'maintenance_issues.name as issue_name', 'property_units.unit_name');
 
         return datatables($maintenance)
@@ -111,8 +130,31 @@ class MaintenanceRequestService
             $userId = auth()->user()->owner_user_id;
         }
         $maintenance = MaintenanceRequest::query()
-            ->where('owner_user_id', $userId)
-            ->findOrFail($id);
+            ->where('owner_user_id', $userId);
+
+        if (auth()->user()->role == USER_ROLE_TENANT) {
+            $tenant = auth()->user()->tenant;
+            $assignmentPairs = TenantUnitAssignment::query()
+                ->where('tenant_id', $tenant->id)
+                ->get(['property_id', 'unit_id']);
+
+            $maintenance->where(function ($query) use ($assignmentPairs, $tenant) {
+                foreach ($assignmentPairs as $pair) {
+                    $query->orWhere(function ($subQuery) use ($pair) {
+                        $subQuery->where('property_id', $pair->property_id)
+                            ->where('unit_id', $pair->unit_id);
+                    });
+                }
+                if ($tenant->property_id && $tenant->unit_id) {
+                    $query->orWhere(function ($subQuery) use ($tenant) {
+                        $subQuery->where('property_id', $tenant->property_id)
+                            ->where('unit_id', $tenant->unit_id);
+                    });
+                }
+            });
+        }
+
+        $maintenance = $maintenance->findOrFail($id);
         return $maintenance?->makeHidden(['created_at', 'updated_at', 'deleted_at']);
     }
 
@@ -138,7 +180,14 @@ class MaintenanceRequestService
                 $userId = getOwnerUserId();
             } else {
                 $userId = $authUser->owner_user_id;
-                if ($authUser->tenant->property_id != $request->property_id || $authUser->tenant->unit_id != $request->unit_id) {
+                $tenant = $authUser->tenant;
+                $hasAssignment = TenantUnitAssignment::query()
+                    ->where('tenant_id', $tenant->id)
+                    ->where('property_id', $request->property_id)
+                    ->where('unit_id', $request->unit_id)
+                    ->exists();
+                $isLegacyPair = ((int) $tenant->property_id === (int) $request->property_id) && ((int) $tenant->unit_id === (int) $request->unit_id);
+                if (!$hasAssignment && !$isLegacyPair) {
                     throw new Exception(__(SOMETHING_WENT_WRONG));
                 } else {
                     $request->merge(['status' => MAINTENANCE_REQUEST_STATUS_PENDING]);
@@ -259,7 +308,32 @@ class MaintenanceRequestService
     {
         DB::beginTransaction();
         try {
-            $information = MaintenanceRequest::where('owner_user_id', getOwnerUserId())->findOrFail($id);
+            $query = MaintenanceRequest::query()
+                ->where('owner_user_id', getOwnerUserId());
+
+            if (auth()->user()->role == USER_ROLE_TENANT) {
+                $tenant = auth()->user()->tenant;
+                $assignmentPairs = TenantUnitAssignment::query()
+                    ->where('tenant_id', $tenant->id)
+                    ->get(['property_id', 'unit_id']);
+
+                $query->where(function ($nestedQuery) use ($assignmentPairs, $tenant) {
+                    foreach ($assignmentPairs as $pair) {
+                        $nestedQuery->orWhere(function ($subQuery) use ($pair) {
+                            $subQuery->where('property_id', $pair->property_id)
+                                ->where('unit_id', $pair->unit_id);
+                        });
+                    }
+                    if ($tenant->property_id && $tenant->unit_id) {
+                        $nestedQuery->orWhere(function ($subQuery) use ($tenant) {
+                            $subQuery->where('property_id', $tenant->property_id)
+                                ->where('unit_id', $tenant->unit_id);
+                        });
+                    }
+                });
+            }
+
+            $information = $query->findOrFail($id);
             $information->delete();
             DB::commit();
             $message = __(DELETED_SUCCESSFULLY);

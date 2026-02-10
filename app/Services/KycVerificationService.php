@@ -15,16 +15,34 @@ class KycVerificationService
     use ResponseTrait;
     public function getAll()
     {
+        $assignmentPropertySummarySql = "(select tenant_unit_assignments.tenant_id, GROUP_CONCAT(DISTINCT properties.name ORDER BY properties.name SEPARATOR ', ') as property_names
+            from tenant_unit_assignments
+            join properties on properties.id = tenant_unit_assignments.property_id
+            group by tenant_unit_assignments.tenant_id) as assignment_property_summary";
+        $assignmentUnitSummarySql = "(select tenant_unit_assignments.tenant_id, GROUP_CONCAT(DISTINCT property_units.unit_name ORDER BY property_units.unit_name SEPARATOR ', ') as unit_names
+            from tenant_unit_assignments
+            join property_units on property_units.id = tenant_unit_assignments.unit_id
+            group by tenant_unit_assignments.tenant_id) as assignment_unit_summary";
+
         $kycVerifications = KycVerification::query()
             ->with(['fileAttachFront', 'fileAttachBack'])
             ->join('tenants', 'kyc_verifications.tenant_id', '=', 'tenants.id')
             ->join('users', 'tenants.user_id', '=', 'users.id')
             ->join('kyc_configs', 'kyc_verifications.kyc_config_id', '=', 'kyc_configs.id')
-            ->join('properties', 'tenants.property_id', '=', 'properties.id')
-            ->join('property_units', 'tenants.unit_id', '=', 'property_units.id')
+            ->leftJoin('properties', 'tenants.property_id', '=', 'properties.id')
+            ->leftJoin('property_units', 'tenants.unit_id', '=', 'property_units.id')
+            ->leftJoin(DB::raw($assignmentPropertySummarySql), 'assignment_property_summary.tenant_id', '=', 'tenants.id')
+            ->leftJoin(DB::raw($assignmentUnitSummarySql), 'assignment_unit_summary.tenant_id', '=', 'tenants.id')
             ->where('users.status', '!=', USER_STATUS_DELETED)
             ->where('kyc_verifications.owner_user_id', getOwnerUserId())
-            ->select('kyc_verifications.*', 'kyc_configs.name as config_name', 'users.first_name', 'users.last_name', 'properties.name as property_name', 'property_units.unit_name')
+            ->select([
+                'kyc_verifications.*',
+                'kyc_configs.name as config_name',
+                'users.first_name',
+                'users.last_name',
+                DB::raw('COALESCE(assignment_property_summary.property_names, properties.name) as property_name'),
+                DB::raw('COALESCE(assignment_unit_summary.unit_names, property_units.unit_name) as unit_name'),
+            ])
             ->get();
 
         foreach ($kycVerifications as $kycVerification) {
@@ -39,22 +57,56 @@ class KycVerificationService
     {
         $property_id = request()->property_id;
         $unit_id = request()->unit_id;
+        $assignmentPropertySummarySql = "(select tenant_unit_assignments.tenant_id, GROUP_CONCAT(DISTINCT properties.name ORDER BY properties.name SEPARATOR ', ') as property_names
+            from tenant_unit_assignments
+            join properties on properties.id = tenant_unit_assignments.property_id
+            group by tenant_unit_assignments.tenant_id) as assignment_property_summary";
+        $assignmentUnitSummarySql = "(select tenant_unit_assignments.tenant_id, GROUP_CONCAT(DISTINCT property_units.unit_name ORDER BY property_units.unit_name SEPARATOR ', ') as unit_names
+            from tenant_unit_assignments
+            join property_units on property_units.id = tenant_unit_assignments.unit_id
+            group by tenant_unit_assignments.tenant_id) as assignment_unit_summary";
+
         $kycVerifications = KycVerification::query()
             ->join('tenants', 'kyc_verifications.tenant_id', '=', 'tenants.id')
             ->join('users', 'tenants.user_id', '=', 'users.id')
             ->join('kyc_configs', 'kyc_verifications.kyc_config_id', '=', 'kyc_configs.id')
-            ->join('properties', 'tenants.property_id', '=', 'properties.id')
-            ->join('property_units', 'tenants.unit_id', '=', 'property_units.id')
+            ->leftJoin('properties', 'tenants.property_id', '=', 'properties.id')
+            ->leftJoin('property_units', 'tenants.unit_id', '=', 'property_units.id')
+            ->leftJoin(DB::raw($assignmentPropertySummarySql), 'assignment_property_summary.tenant_id', '=', 'tenants.id')
+            ->leftJoin(DB::raw($assignmentUnitSummarySql), 'assignment_unit_summary.tenant_id', '=', 'tenants.id')
             ->where('users.status', '!=', USER_STATUS_DELETED)
             ->whereNull('users.deleted_at')
             ->when($property_id != 0, function ($q) use ($property_id) {
-                $q->where('properties.id', $property_id);
+                $q->where(function ($query) use ($property_id) {
+                    $query->where('tenants.property_id', $property_id)
+                        ->orWhereExists(function ($subQuery) use ($property_id) {
+                            $subQuery->select(DB::raw(1))
+                                ->from('tenant_unit_assignments')
+                                ->whereColumn('tenant_unit_assignments.tenant_id', 'kyc_verifications.tenant_id')
+                                ->where('tenant_unit_assignments.property_id', $property_id);
+                        });
+                });
             })
             ->when($unit_id != 0, function ($q) use ($unit_id) {
-                $q->where('property_units.id', $unit_id);
+                $q->where(function ($query) use ($unit_id) {
+                    $query->where('tenants.unit_id', $unit_id)
+                        ->orWhereExists(function ($subQuery) use ($unit_id) {
+                            $subQuery->select(DB::raw(1))
+                                ->from('tenant_unit_assignments')
+                                ->whereColumn('tenant_unit_assignments.tenant_id', 'kyc_verifications.tenant_id')
+                                ->where('tenant_unit_assignments.unit_id', $unit_id);
+                        });
+                });
             })
             ->where('kyc_verifications.owner_user_id', getOwnerUserId())
-            ->select('kyc_verifications.*', 'kyc_configs.name as config_name', 'users.first_name', 'users.last_name', 'properties.name as property_name', 'property_units.unit_name');
+            ->select([
+                'kyc_verifications.*',
+                'kyc_configs.name as config_name',
+                'users.first_name',
+                'users.last_name',
+                DB::raw('COALESCE(assignment_property_summary.property_names, properties.name) as property_name'),
+                DB::raw('COALESCE(assignment_unit_summary.unit_names, property_units.unit_name) as unit_name'),
+            ]);
 
         return datatables($kycVerifications)
             ->addIndexColumn()
@@ -117,14 +169,33 @@ class KycVerificationService
 
     public function getAllByTenantId($id)
     {
+        $assignmentPropertySummarySql = "(select tenant_unit_assignments.tenant_id, GROUP_CONCAT(DISTINCT properties.name ORDER BY properties.name SEPARATOR ', ') as property_names
+            from tenant_unit_assignments
+            join properties on properties.id = tenant_unit_assignments.property_id
+            group by tenant_unit_assignments.tenant_id) as assignment_property_summary";
+        $assignmentUnitSummarySql = "(select tenant_unit_assignments.tenant_id, GROUP_CONCAT(DISTINCT property_units.unit_name ORDER BY property_units.unit_name SEPARATOR ', ') as unit_names
+            from tenant_unit_assignments
+            join property_units on property_units.id = tenant_unit_assignments.unit_id
+            group by tenant_unit_assignments.tenant_id) as assignment_unit_summary";
+
         $kycVerifications = KycVerification::where('kyc_verifications.tenant_id', $id)
             ->join('kyc_configs', 'kyc_verifications.kyc_config_id', '=', 'kyc_configs.id')
             ->join('tenants', 'kyc_verifications.tenant_id', '=', 'tenants.id')
             ->join('users', 'tenants.user_id', '=', 'users.id')
-            ->join('properties', 'tenants.property_id', '=', 'properties.id')
-            ->join('property_units', 'tenants.unit_id', '=', 'property_units.id')
+            ->leftJoin('properties', 'tenants.property_id', '=', 'properties.id')
+            ->leftJoin('property_units', 'tenants.unit_id', '=', 'property_units.id')
+            ->leftJoin(DB::raw($assignmentPropertySummarySql), 'assignment_property_summary.tenant_id', '=', 'tenants.id')
+            ->leftJoin(DB::raw($assignmentUnitSummarySql), 'assignment_unit_summary.tenant_id', '=', 'tenants.id')
             ->whereNull('users.deleted_at')
-            ->select('kyc_verifications.*', 'kyc_configs.name as config_name', 'kyc_configs.is_both', 'users.first_name', 'users.last_name', 'properties.name as property_name', 'property_units.unit_name')
+            ->select([
+                'kyc_verifications.*',
+                'kyc_configs.name as config_name',
+                'kyc_configs.is_both',
+                'users.first_name',
+                'users.last_name',
+                DB::raw('COALESCE(assignment_property_summary.property_names, properties.name) as property_name'),
+                DB::raw('COALESCE(assignment_unit_summary.unit_names, property_units.unit_name) as unit_name'),
+            ])
             ->get();
         foreach ($kycVerifications as $kycVerification) {
             $kycVerification->front = $kycVerification->front;
@@ -212,14 +283,33 @@ class KycVerificationService
 
     public function getInfo($id)
     {
+        $assignmentPropertySummarySql = "(select tenant_unit_assignments.tenant_id, GROUP_CONCAT(DISTINCT properties.name ORDER BY properties.name SEPARATOR ', ') as property_names
+            from tenant_unit_assignments
+            join properties on properties.id = tenant_unit_assignments.property_id
+            group by tenant_unit_assignments.tenant_id) as assignment_property_summary";
+        $assignmentUnitSummarySql = "(select tenant_unit_assignments.tenant_id, GROUP_CONCAT(DISTINCT property_units.unit_name ORDER BY property_units.unit_name SEPARATOR ', ') as unit_names
+            from tenant_unit_assignments
+            join property_units on property_units.id = tenant_unit_assignments.unit_id
+            group by tenant_unit_assignments.tenant_id) as assignment_unit_summary";
+
         $kycVerification = KycVerification::query()
             ->join('kyc_configs', 'kyc_verifications.kyc_config_id', '=', 'kyc_configs.id')
             ->join('tenants', 'kyc_verifications.tenant_id', '=', 'tenants.id')
             ->join('users', 'tenants.user_id', '=', 'users.id')
-            ->join('properties', 'tenants.property_id', '=', 'properties.id')
-            ->join('property_units', 'tenants.unit_id', '=', 'property_units.id')
+            ->leftJoin('properties', 'tenants.property_id', '=', 'properties.id')
+            ->leftJoin('property_units', 'tenants.unit_id', '=', 'property_units.id')
+            ->leftJoin(DB::raw($assignmentPropertySummarySql), 'assignment_property_summary.tenant_id', '=', 'tenants.id')
+            ->leftJoin(DB::raw($assignmentUnitSummarySql), 'assignment_unit_summary.tenant_id', '=', 'tenants.id')
             ->whereNull('users.deleted_at')
-            ->select('kyc_verifications.*', 'kyc_configs.name as config_name', 'kyc_configs.is_both', 'users.first_name', 'users.last_name', 'properties.name as property_name', 'property_units.unit_name')
+            ->select([
+                'kyc_verifications.*',
+                'kyc_configs.name as config_name',
+                'kyc_configs.is_both',
+                'users.first_name',
+                'users.last_name',
+                DB::raw('COALESCE(assignment_property_summary.property_names, properties.name) as property_name'),
+                DB::raw('COALESCE(assignment_unit_summary.unit_names, property_units.unit_name) as unit_name'),
+            ])
             ->findOrFail($id);
         return $kycVerification?->makeHidden(['created_at', 'updated_at', 'deleted_at']);
     }

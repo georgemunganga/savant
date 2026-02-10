@@ -171,13 +171,32 @@ class ReportService
     public function leases()
     {
         $request = request()->all();
+        $assignmentPropertySummarySql = "(select tenant_unit_assignments.tenant_id, GROUP_CONCAT(DISTINCT properties.name ORDER BY properties.name SEPARATOR ', ') as property_names
+            from tenant_unit_assignments
+            join properties on properties.id = tenant_unit_assignments.property_id
+            group by tenant_unit_assignments.tenant_id) as assignment_property_summary";
+        $assignmentUnitSummarySql = "(select tenant_unit_assignments.tenant_id, GROUP_CONCAT(DISTINCT property_units.unit_name ORDER BY property_units.unit_name SEPARATOR ', ') as unit_names
+            from tenant_unit_assignments
+            join property_units on property_units.id = tenant_unit_assignments.unit_id
+            group by tenant_unit_assignments.tenant_id) as assignment_unit_summary";
+
         $tenants = Tenant::query()
             ->join('users', 'tenants.user_id', '=', 'users.id')
-            ->join('properties', 'tenants.property_id', '=', 'properties.id')
-            ->join('property_units', 'tenants.unit_id', '=', 'property_units.id')
+            ->leftJoin('properties', 'tenants.property_id', '=', 'properties.id')
+            ->leftJoin('property_units', 'tenants.unit_id', '=', 'property_units.id')
+            ->leftJoin(DB::raw($assignmentPropertySummarySql), 'assignment_property_summary.tenant_id', '=', 'tenants.id')
+            ->leftJoin(DB::raw($assignmentUnitSummarySql), 'assignment_unit_summary.tenant_id', '=', 'tenants.id')
             ->whereNull('users.deleted_at')
             ->where('tenants.owner_user_id', getOwnerUserId())
-            ->select('tenants.*', 'users.first_name', 'users.last_name', 'properties.name as property_name', 'property_units.unit_name');
+            ->select(
+                'tenants.*',
+                'users.first_name',
+                'users.last_name',
+                'properties.name as property_name',
+                'property_units.unit_name',
+                'assignment_property_summary.property_names as assignment_property_names',
+                'assignment_unit_summary.unit_names as assignment_unit_names'
+            );
 
 
         return datatables($tenants)
@@ -186,10 +205,10 @@ class ReportService
                 return  $tenant->first_name . ' ' . $tenant->last_name;
             })
             ->addColumn('property', function ($tenant) {
-                return $tenant->property_name;
+                return $tenant->assignment_property_names ?: $tenant->property_name;
             })
             ->addColumn('unit', function ($tenant) {
-                return $tenant->unit_name;
+                return $tenant->assignment_unit_names ?: $tenant->unit_name;
             })
             ->addColumn('start_date', function ($item) {
                 return $item->lease_start_date;
@@ -203,10 +222,16 @@ class ReportService
 
     public function occupancy()
     {
+        $occupiedSummarySql = "(select tenant_unit_assignments.property_id, COUNT(DISTINCT tenant_unit_assignments.unit_id) as occupied_unit
+            from tenant_unit_assignments
+            join tenants on tenants.id = tenant_unit_assignments.tenant_id
+            join users on users.id = tenants.user_id
+            where users.deleted_at IS NULL and tenants.status = " . TENANT_STATUS_ACTIVE . " and tenants.owner_user_id = " . getOwnerUserId() . "
+            group by tenant_unit_assignments.property_id) as occupied_summary";
+
         $properties = Property::query()
-            ->leftJoin('tenants', ['properties.id' => 'tenants.property_id', 'tenants.status' => (DB::raw(TENANT_STATUS_ACTIVE))])
-            ->selectRaw('properties.number_of_unit - (COUNT(tenants.id)) as available_unit,properties.*')
-            ->groupBy('properties.id')
+            ->leftJoin(DB::raw($occupiedSummarySql), 'occupied_summary.property_id', '=', 'properties.id')
+            ->selectRaw('GREATEST(properties.number_of_unit - COALESCE(occupied_summary.occupied_unit, 0), 0) as available_unit, properties.*')
             ->where('properties.owner_user_id', getOwnerUserId());
 
         return datatables($properties)
@@ -224,6 +249,9 @@ class ReportService
                 return $property->available_unit;
             })
             ->addColumn('turn_over', function ($property) {
+                if ((int) $property->number_of_unit < 1) {
+                    return '0%';
+                }
                 $turnOver = ($property->available_unit / $property->number_of_unit) * 100;
                 return $turnOver . '%';
             })
@@ -236,16 +264,16 @@ class ReportService
         $maintenance = MaintenanceRequest::query()
             ->join('properties', 'maintenance_requests.property_id', '=', 'properties.id')
             ->join('property_units', 'maintenance_requests.unit_id', '=', 'property_units.id')
-            ->join('tenants', 'maintenance_requests.unit_id', '=', 'tenants.unit_id')
-            ->join('users', 'tenants.user_id', '=', 'users.id')
+            ->leftJoin('users', function ($q) {
+                $q->on('maintenance_requests.created_by', '=', 'users.id')->whereNull('users.deleted_at');
+            })
             ->join('maintenance_issues', 'maintenance_requests.issue_id', '=', 'maintenance_issues.id')
-            ->whereNull('users.deleted_at')
             ->where('maintenance_requests.owner_user_id', getOwnerUserId())
             ->select('maintenance_requests.*', 'properties.name as property_name', 'maintenance_issues.name as issue_name', 'property_units.unit_name', 'users.first_name', 'users.last_name');
         return datatables($maintenance)
             ->addIndexColumn()
             ->addColumn('tenant_name', function ($maintenance) {
-                return $maintenance->first_name . ' ' . $maintenance->last_name;
+                return trim(($maintenance->first_name ?? '') . ' ' . ($maintenance->last_name ?? '')) ?: __('N/A');
             })
             ->addColumn('status', function ($maintenance) {
                 if ($maintenance->status == MAINTENANCE_REQUEST_STATUS_COMPLETE) {
@@ -262,14 +290,37 @@ class ReportService
 
     public function tenant()
     {
+        $assignmentPropertySummarySql = "(select tenant_unit_assignments.tenant_id, GROUP_CONCAT(DISTINCT properties.name ORDER BY properties.name SEPARATOR ', ') as property_names
+            from tenant_unit_assignments
+            join properties on properties.id = tenant_unit_assignments.property_id
+            group by tenant_unit_assignments.tenant_id) as assignment_property_summary";
+        $assignmentUnitSummarySql = "(select tenant_unit_assignments.tenant_id, GROUP_CONCAT(DISTINCT property_units.unit_name ORDER BY property_units.unit_name SEPARATOR ', ') as unit_names
+            from tenant_unit_assignments
+            join property_units on property_units.id = tenant_unit_assignments.unit_id
+            group by tenant_unit_assignments.tenant_id) as assignment_unit_summary";
+
         $tenants = Tenant::query()
             ->join('users', 'tenants.user_id', '=', 'users.id')
             ->whereNull('users.deleted_at')
             ->leftJoin('properties', 'tenants.property_id', '=', 'properties.id')
             ->leftJoin('property_units', 'tenants.unit_id', '=', 'property_units.id')
+            ->leftJoin(DB::raw($assignmentPropertySummarySql), 'assignment_property_summary.tenant_id', '=', 'tenants.id')
+            ->leftJoin(DB::raw($assignmentUnitSummarySql), 'assignment_unit_summary.tenant_id', '=', 'tenants.id')
             ->leftJoin(DB::raw('(select tenant_id, SUM(amount) as paid from invoices where status = 1 group By tenant_id) as inv_paid'), ['inv_paid.tenant_id' => 'tenants.id'])
             ->leftJoin(DB::raw('(select tenant_id, SUM(amount) as due from invoices where status = 0 group By tenant_id) as inv_due'), ['inv_due.tenant_id' => 'tenants.id'])
-            ->select(['tenants.*', 'inv_paid.paid', 'inv_due.due', 'users.first_name', 'users.last_name', 'users.contact_number', 'users.email', 'property_units.unit_name', 'properties.name as property_name'])
+            ->select([
+                'tenants.*',
+                'inv_paid.paid',
+                'inv_due.due',
+                'users.first_name',
+                'users.last_name',
+                'users.contact_number',
+                'users.email',
+                'property_units.unit_name',
+                'properties.name as property_name',
+                'assignment_property_summary.property_names as assignment_property_names',
+                'assignment_unit_summary.unit_names as assignment_unit_names',
+            ])
             ->where('tenants.owner_user_id', getOwnerUserId());
 
         return datatables($tenants)
@@ -284,10 +335,10 @@ class ReportService
                 return $tenant->contact_number;
             })
             ->addColumn('property', function ($tenant) {
-                return $tenant->property_name;
+                return $tenant->assignment_property_names ?: $tenant->property_name;
             })
             ->addColumn('unit', function ($tenant) {
-                return $tenant->unit_name;
+                return $tenant->assignment_unit_names ?: $tenant->unit_name;
             })
             ->addColumn('paid', function ($tenant) {
                 return currencyPrice($tenant->paid);

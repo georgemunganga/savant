@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -29,6 +30,11 @@ class Tenant extends Model
     public function unit(): HasOne
     {
         return $this->hasOne(PropertyUnit::class, 'id', 'unit_id');
+    }
+
+    public function unitAssignments(): HasMany
+    {
+        return $this->hasMany(TenantUnitAssignment::class, 'tenant_id');
     }
 
     /**

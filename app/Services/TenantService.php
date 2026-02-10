@@ -5,7 +5,10 @@ namespace App\Services;
 use App\Models\EmailTemplate;
 use App\Models\FileManager;
 use App\Models\Invoice;
+use App\Models\Property;
+use App\Models\PropertyUnit;
 use App\Models\Tenant;
+use App\Models\TenantUnitAssignment;
 use App\Models\TenantDetails;
 use App\Models\User;
 use App\Services\SmsMail\MailService;
@@ -30,6 +33,7 @@ class TenantService
             ->whereNull('users.deleted_at')
             ->select(['tenants.*', 'inv.due', 'inv_last.last_payment', 'users.first_name', 'users.last_name', 'users.status as userStatus', 'users.contact_number', 'users.email', 'property_units.unit_name', 'properties.name as property_name'])
             ->where('tenants.owner_user_id', getOwnerUserId())
+            ->with(['unitAssignments.unit', 'unitAssignments.property'])
             ->get();
         return $data?->makeHidden(['created_at', 'updated_at', 'deleted_at']);
     }
@@ -47,14 +51,38 @@ class TenantService
 
     public function getAllData()
     {
+        $assignmentPropertySummarySql = "(select tenant_unit_assignments.tenant_id, GROUP_CONCAT(DISTINCT properties.name ORDER BY properties.name SEPARATOR ', ') as property_names
+            from tenant_unit_assignments
+            join properties on properties.id = tenant_unit_assignments.property_id
+            group by tenant_unit_assignments.tenant_id) as assignment_property_summary";
+        $assignmentUnitSummarySql = "(select tenant_unit_assignments.tenant_id, GROUP_CONCAT(DISTINCT property_units.unit_name ORDER BY property_units.unit_name SEPARATOR ', ') as unit_names
+            from tenant_unit_assignments
+            join property_units on property_units.id = tenant_unit_assignments.unit_id
+            group by tenant_unit_assignments.tenant_id) as assignment_unit_summary";
+
         $tenants = Tenant::query()
             ->join('users', 'tenants.user_id', '=', 'users.id')
             ->whereNull('users.deleted_at')
             ->leftJoin('properties', 'tenants.property_id', '=', 'properties.id')
             ->leftJoin('property_units', 'tenants.unit_id', '=', 'property_units.id')
+            ->leftJoin(DB::raw($assignmentPropertySummarySql), 'assignment_property_summary.tenant_id', '=', 'tenants.id')
+            ->leftJoin(DB::raw($assignmentUnitSummarySql), 'assignment_unit_summary.tenant_id', '=', 'tenants.id')
             ->leftJoin(DB::raw('(select tenant_id, SUM(amount) as due from invoices where status = 0 AND deleted_at IS NULL group By tenant_id) as inv'), ['inv.tenant_id' => 'tenants.id'])
             ->leftJoin(DB::raw('(select tenant_id, MAX(updated_at) as last_payment from invoices where status = 1 AND deleted_at IS NULL group By tenant_id) as inv_last'), ['inv_last.tenant_id' => 'tenants.id'])
-            ->select(['tenants.*', 'inv.due', 'inv_last.last_payment', 'users.first_name', 'users.last_name', 'users.status as userStatus', 'users.contact_number', 'users.email', 'property_units.unit_name', 'properties.name as property_name'])
+            ->select([
+                'tenants.*',
+                'inv.due',
+                'inv_last.last_payment',
+                'users.first_name',
+                'users.last_name',
+                'users.status as userStatus',
+                'users.contact_number',
+                'users.email',
+                'property_units.unit_name',
+                'properties.name as property_name',
+                'assignment_property_summary.property_names as assignment_property_names',
+                'assignment_unit_summary.unit_names as assignment_unit_names',
+            ])
             ->where('tenants.owner_user_id', getOwnerUserId());
 
         return datatables($tenants)
@@ -76,7 +104,7 @@ class TenantService
                 return ucfirst($tenant->tenant_type ?? 'person');
             })
             ->addColumn('property', function ($tenant) {
-                return $tenant->property_name;
+                return $tenant->assignment_property_names ?: $tenant->property_name;
             })
             ->addColumn('contact', function ($tenant) {
                 return $tenant->contact_number;
@@ -91,7 +119,7 @@ class TenantService
                 return currencyPrice($tenant->general_rent);
             })
             ->addColumn('unit', function ($tenant) {
-                return $tenant->unit_name;
+                return $tenant->assignment_unit_names ?: $tenant->unit_name;
             })
             ->addColumn('status', function ($tenant) {
                 $html = '';
@@ -121,12 +149,34 @@ class TenantService
 
     public function getAllHistoryData()
     {
+        $assignmentPropertySummarySql = "(select tenant_unit_assignments.tenant_id, GROUP_CONCAT(DISTINCT properties.name ORDER BY properties.name SEPARATOR ', ') as property_names
+            from tenant_unit_assignments
+            join properties on properties.id = tenant_unit_assignments.property_id
+            group by tenant_unit_assignments.tenant_id) as assignment_property_summary";
+        $assignmentUnitSummarySql = "(select tenant_unit_assignments.tenant_id, GROUP_CONCAT(DISTINCT property_units.unit_name ORDER BY property_units.unit_name SEPARATOR ', ') as unit_names
+            from tenant_unit_assignments
+            join property_units on property_units.id = tenant_unit_assignments.unit_id
+            group by tenant_unit_assignments.tenant_id) as assignment_unit_summary";
+
         $tenants = Tenant::query()
             ->join('users', 'tenants.user_id', '=', 'users.id')
             ->whereNull('users.deleted_at')
             ->leftJoin('properties', 'tenants.property_id', '=', 'properties.id')
             ->leftJoin('property_units', 'tenants.unit_id', '=', 'property_units.id')
-            ->select(['tenants.*', 'users.first_name', 'users.last_name', 'users.status as userStatus', 'users.contact_number', 'users.email', 'property_units.unit_name', 'properties.name as property_name'])
+            ->leftJoin(DB::raw($assignmentPropertySummarySql), 'assignment_property_summary.tenant_id', '=', 'tenants.id')
+            ->leftJoin(DB::raw($assignmentUnitSummarySql), 'assignment_unit_summary.tenant_id', '=', 'tenants.id')
+            ->select([
+                'tenants.*',
+                'users.first_name',
+                'users.last_name',
+                'users.status as userStatus',
+                'users.contact_number',
+                'users.email',
+                'property_units.unit_name',
+                'properties.name as property_name',
+                'assignment_property_summary.property_names as assignment_property_names',
+                'assignment_unit_summary.unit_names as assignment_unit_names',
+            ])
             ->where('tenants.owner_user_id', getOwnerUserId());
 
         return datatables($tenants)
@@ -145,10 +195,10 @@ class TenantService
                     </div>';
             })
             ->addColumn('property', function ($tenant) {
-                return $tenant->property_name;
+                return $tenant->assignment_property_names ?: $tenant->property_name;
             })
             ->addColumn('unit', function ($tenant) {
-                return $tenant->unit_name;
+                return $tenant->assignment_unit_names ?: $tenant->unit_name;
             })
             ->addColumn('status', function ($tenant) {
                 $html = '';
@@ -203,6 +253,54 @@ class TenantService
         return $data?->makeHidden(['created_at', 'updated_at', 'deleted_at']);
     }
 
+    public function getUnitAssignmentsByTenantId(int $tenantId)
+    {
+        $assignments = TenantUnitAssignment::query()
+            ->join('tenants', 'tenant_unit_assignments.tenant_id', '=', 'tenants.id')
+            ->where('tenants.owner_user_id', getOwnerUserId())
+            ->where('tenant_unit_assignments.tenant_id', $tenantId)
+            ->with([
+                'property' => function ($q) {
+                    $q->with(['propertyDetail', 'fileAttachThumbnail']);
+                },
+                'unit' => function ($q) {
+                    $q->select(['id', 'property_id', 'unit_name']);
+                },
+            ])
+            ->select('tenant_unit_assignments.*')
+            ->orderByDesc('tenant_unit_assignments.id')
+            ->get();
+
+        if ($assignments->isNotEmpty()) {
+            return $assignments;
+        }
+
+        $tenant = Tenant::query()
+            ->where('owner_user_id', getOwnerUserId())
+            ->where('id', $tenantId)
+            ->with([
+                'property' => function ($q) {
+                    $q->with(['propertyDetail', 'fileAttachThumbnail']);
+                },
+                'unit',
+            ])
+            ->first();
+
+        if (!$tenant || !$tenant->property_id || !$tenant->unit_id) {
+            return collect();
+        }
+
+        $fallback = new TenantUnitAssignment([
+            'tenant_id' => $tenant->id,
+            'property_id' => $tenant->property_id,
+            'unit_id' => $tenant->unit_id,
+        ]);
+        $fallback->setRelation('property', $tenant->property);
+        $fallback->setRelation('unit', $tenant->unit);
+
+        return collect([$fallback]);
+    }
+
     public function closingStatusHistory($id)
     {
         return Tenant::query()->where('owner_user_id', getOwnerUserId())->where('status', TENANT_STATUS_CLOSE)->findOrFail($id);
@@ -211,10 +309,9 @@ class TenantService
     public function getPaymentByTenantId($id)
     {
         $data = Invoice::query()
-            ->join('tenants', 'invoices.property_unit_id', '=', 'tenants.unit_id')
             ->select('invoices.*')
-            ->where('tenants.owner_user_id', getOwnerUserId())
-            ->where('tenants.id', $id)
+            ->where('invoices.owner_user_id', getOwnerUserId())
+            ->where('invoices.tenant_id', $id)
             ->get();
         return $data?->makeHidden(['created_at', 'updated_at', 'deleted_at']);
     }
@@ -263,10 +360,9 @@ class TenantService
     {
         return Invoice::query()
             ->select('invoices.*')
-            ->join('tenants', 'invoices.property_unit_id', '=', 'tenants.unit_id')
+            ->where('invoices.owner_user_id', getOwnerUserId())
+            ->where('invoices.tenant_id', $id)
             ->whereNot('invoices.status', INVOICE_STATUS_PAID)
-            ->where('tenants.owner_user_id', getOwnerUserId())
-            ->where('tenants.id', $id)
             ->get();
     }
 
@@ -400,11 +496,9 @@ class TenantService
     {
         DB::beginTransaction();
         try {
-            $unitExist = Tenant::where('owner_user_id', getOwnerUserId())->where('unit_id', $request->unit_id)->where('status', TENANT_STATUS_ACTIVE)->whereNot('id', $request->id)->first();
-            if (!is_null($unitExist)) {
-                throw new Exception(__('Unit already Used'));
-            }
             $tenant = Tenant::where('owner_user_id', getOwnerUserId())->findOrFail($request->id);
+            $this->ensureUnitOccupancyLimit((int) $request->property_id, (int) $request->unit_id, (int) $tenant->id);
+            $this->storeTenantUnitAssignment($tenant, (int) $request->property_id, (int) $request->unit_id);
             $tenant->property_id = $request->property_id;
             $tenant->unit_id = $request->unit_id;
             $tenant->lease_start_date = $request->lease_start_date;
@@ -435,6 +529,7 @@ class TenantService
         DB::beginTransaction();
         try {
             $tenant = Tenant::where('owner_user_id', getOwnerUserId())->findOrFail($request->id);
+            $this->ensureTenantAllAssignmentsWithinLimits((int) $tenant->id);
             $tenant->status = TENANT_STATUS_ACTIVE;
             $tenant->save();
             /*File Manager Call upload*/
@@ -460,6 +555,175 @@ class TenantService
             DB::rollBack();
             $message = getErrorMessage($e, $e->getMessage());
             return $this->error([],  $message);
+        }
+    }
+
+    public function bulkAssignmentStore(Request $request)
+    {
+        DB::beginTransaction();
+        try {
+            $assignments = collect($request->assignments ?? []);
+            $tenantIds = $assignments->pluck('tenant_id')->map(fn($id) => (int) $id)->unique()->values();
+
+            $payloadDuplicateCheck = [];
+            foreach ($assignments as $assignment) {
+                $tenantId = (int) ($assignment['tenant_id'] ?? 0);
+                $unitId = (int) ($assignment['unit_id'] ?? 0);
+                $key = $tenantId . '-' . $unitId;
+                if (isset($payloadDuplicateCheck[$key])) {
+                    throw new Exception(__('Duplicate assignment found in request'));
+                }
+                $payloadDuplicateCheck[$key] = true;
+            }
+
+            $ownerPropertyIds = Property::query()
+                ->where('owner_user_id', getOwnerUserId())
+                ->pluck('id')
+                ->map(fn($id) => (int) $id)
+                ->toArray();
+
+            $ownerUnits = PropertyUnit::query()
+                ->whereIn('property_id', $ownerPropertyIds)
+                ->select(['id', 'property_id', 'max_occupancy', 'unit_name'])
+                ->get()
+                ->keyBy('id');
+
+            $ownerTenants = Tenant::query()
+                ->where('owner_user_id', getOwnerUserId())
+                ->whereIn('id', $tenantIds)
+                ->get()
+                ->keyBy('id');
+
+            $activeUnitCounts = TenantUnitAssignment::query()
+                ->join('tenants', 'tenant_unit_assignments.tenant_id', '=', 'tenants.id')
+                ->join('users', 'tenants.user_id', '=', 'users.id')
+                ->whereNull('users.deleted_at')
+                ->where('tenants.owner_user_id', getOwnerUserId())
+                ->where('tenants.status', TENANT_STATUS_ACTIVE)
+                ->selectRaw('tenant_unit_assignments.unit_id, COUNT(DISTINCT tenant_unit_assignments.tenant_id) as total')
+                ->groupBy('tenant_unit_assignments.unit_id')
+                ->pluck('total', 'tenant_unit_assignments.unit_id')
+                ->toArray();
+
+            foreach ($assignments as $assignment) {
+                $tenantId = (int) ($assignment['tenant_id'] ?? 0);
+                $propertyId = (int) ($assignment['property_id'] ?? 0);
+                $unitId = (int) ($assignment['unit_id'] ?? 0);
+
+                $tenant = $ownerTenants->get($tenantId);
+                if (!$tenant) {
+                    throw new Exception(__('Invalid tenant selected'));
+                }
+                if ((int) $tenant->status === TENANT_STATUS_CLOSE) {
+                    throw new Exception(__('Closed tenant cannot be reassigned'));
+                }
+                if (!in_array($propertyId, $ownerPropertyIds)) {
+                    throw new Exception(__('Invalid property selected'));
+                }
+                $unit = $ownerUnits->get($unitId);
+                if (!$unit || (int) $unit->property_id !== $propertyId) {
+                    throw new Exception(__('Invalid unit selected'));
+                }
+                $assignmentExists = TenantUnitAssignment::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('unit_id', $unitId)
+                    ->exists();
+                if ($assignmentExists) {
+                    $tenant->property_id = $propertyId;
+                    $tenant->unit_id = $unitId;
+                    $tenant->save();
+                    continue;
+                }
+                if ((int) $tenant->status === TENANT_STATUS_ACTIVE && !is_null($unit->max_occupancy)) {
+                    $nextCount = (int) ($activeUnitCounts[$unitId] ?? 0) + 1;
+                    if ($nextCount > (int) $unit->max_occupancy) {
+                        throw new Exception(__('Unit occupancy limit reached for :unit', ['unit' => $unit->unit_name]));
+                    }
+                    $activeUnitCounts[$unitId] = $nextCount;
+                }
+
+                TenantUnitAssignment::create([
+                    'tenant_id' => $tenantId,
+                    'property_id' => $propertyId,
+                    'unit_id' => $unitId,
+                ]);
+
+                $tenant->property_id = $propertyId;
+                $tenant->unit_id = $unitId;
+                $tenant->save();
+            }
+
+            DB::commit();
+            return $this->success([], __(UPDATED_SUCCESSFULLY));
+        } catch (Exception $e) {
+            DB::rollBack();
+            return $this->error([], getErrorMessage($e, $e->getMessage()));
+        }
+    }
+
+    private function ensureUnitOccupancyLimit(int $propertyId, int $unitId, ?int $excludeTenantId = null): void
+    {
+        $unit = PropertyUnit::query()
+            ->join('properties', 'property_units.property_id', '=', 'properties.id')
+            ->where('properties.owner_user_id', getOwnerUserId())
+            ->where('property_units.id', $unitId)
+            ->where('property_units.property_id', $propertyId)
+            ->select(['property_units.id', 'property_units.unit_name', 'property_units.max_occupancy'])
+            ->first();
+
+        if (!$unit) {
+            throw new Exception(__('Invalid unit selected'));
+        }
+        if (is_null($unit->max_occupancy)) {
+            return;
+        }
+
+        $activeTenantCount = TenantUnitAssignment::query()
+            ->join('tenants', 'tenant_unit_assignments.tenant_id', '=', 'tenants.id')
+            ->join('users', 'tenants.user_id', '=', 'users.id')
+            ->whereNull('users.deleted_at')
+            ->where('tenants.owner_user_id', getOwnerUserId())
+            ->where('tenants.status', TENANT_STATUS_ACTIVE)
+            ->where('tenant_unit_assignments.unit_id', $unitId)
+            ->when(!is_null($excludeTenantId), function ($q) use ($excludeTenantId) {
+                $q->where('tenants.id', '!=', $excludeTenantId);
+            })
+            ->count(DB::raw('DISTINCT tenants.id'));
+
+        if ($activeTenantCount >= (int) $unit->max_occupancy) {
+            throw new Exception(__('Unit occupancy limit reached for :unit', ['unit' => $unit->unit_name]));
+        }
+    }
+
+    private function storeTenantUnitAssignment(Tenant $tenant, int $propertyId, int $unitId): void
+    {
+        $exists = TenantUnitAssignment::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('unit_id', $unitId)
+            ->exists();
+
+        if (!$exists) {
+            TenantUnitAssignment::create([
+                'tenant_id' => $tenant->id,
+                'property_id' => $propertyId,
+                'unit_id' => $unitId,
+            ]);
+        }
+    }
+
+    private function ensureTenantAllAssignmentsWithinLimits(int $tenantId): void
+    {
+        $assignments = TenantUnitAssignment::query()
+            ->join('property_units', 'tenant_unit_assignments.unit_id', '=', 'property_units.id')
+            ->join('properties', 'property_units.property_id', '=', 'properties.id')
+            ->where('tenant_unit_assignments.tenant_id', $tenantId)
+            ->where('properties.owner_user_id', getOwnerUserId())
+            ->whereNotNull('property_units.max_occupancy')
+            ->select(['tenant_unit_assignments.property_id', 'tenant_unit_assignments.unit_id'])
+            ->get();
+
+        foreach ($assignments as $assignment) {
+            $this->ensureUnitOccupancyLimit((int) $assignment->property_id, (int) $assignment->unit_id, $tenantId);
         }
     }
 

@@ -31,8 +31,12 @@
                     <div class="row">
                         <!-- Property Top Search Bar Start -->
                         <div class="property-top-search-bar">
-                            <div class="row">
-                                <div class="col-md-6">
+                            <div class="row align-items-center">
+                                <div class="col-md-6 col-lg-4 mb-25">
+                                    <input type="text" class="form-control" id="propertyLiveSearch"
+                                        placeholder="{{ __('Search properties...') }}">
+                                </div>
+                                <div class="col-md-6 col-lg-8 text-end">
                                     <a href="{{ route('owner.property.add') }}" class="theme-btn mb-25"
                                         title={{ __('Add New Property') }}>{{ __('Add New Property') }}</a>
                                 </div>
@@ -46,7 +50,7 @@
                                 @if (getOption('app_card_data_show', 1) == 1)
                                     @forelse($properties as $property)
                                         <!-- Property Item Start -->
-                                        <div class="col-md-6 col-lg-6 col-xl-4 col-xxl-3">
+                                        <div class="col-md-6 col-lg-6 col-xl-4 col-xxl-3 single-property">
                                             <div
                                                 class="property-item bg-off-white theme-border radius-10 position-relative mb-25">
                                                 <a href="{{ route('owner.property.show', $property->id) }}"
@@ -141,6 +145,19 @@
                                         </div>
                                         <!-- Empty Properties row -->
                                     @endforelse
+                                    <!-- No Results Message -->
+                                    <div class="col-12 d-none" id="propertyNoResults">
+                                        <div class="text-center py-4">
+                                            <p class="font-13 color-heading">{{ __('No properties found matching your search.') }}</p>
+                                        </div>
+                                    </div>
+                                    <!-- Pagination -->
+                                    <div class="col-12 mt-10" id="propertyPagination">
+                                        <nav aria-label="Property pagination">
+                                            <ul class="pagination justify-content-center mb-0" id="propertyPaginationList">
+                                            </ul>
+                                        </nav>
+                                    </div>
                                 @else
                                     <div class="col-md-12 col-lg-12 col-xl-12 col-xxl-12">
                                         <div class="account-settings-rightside bg-off-white theme-border radius-4 p-25">
@@ -190,3 +207,6 @@
         <script src="{{ asset('assets/js/custom/propery-datatable.js') }}"></script>
     @endpush
 @endif
+@push('script')
+    <script src="{{ asset('assets/js/custom/property-list.js') }}"></script>
+@endpush

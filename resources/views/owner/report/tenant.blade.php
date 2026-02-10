@@ -32,7 +32,7 @@
                                         <tr>
                                             <th>{{ __('SL') }}</th>
                                             <th class="text-center" data-priority="1">{{ __('Name') }}</th>
-                                            <th class="text-center">{{ __('Unit') }}</th>
+                                            <th class="text-center">{{ __('Email') }}</th>
                                             <th class="text-center">{{ __('Contact') }}</th>
                                             <th class="text-center">{{ __('Property') }}</th>
                                             <th class="text-center">{{ __('Unit') }}</th>

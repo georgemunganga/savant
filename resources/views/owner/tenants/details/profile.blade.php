@@ -323,8 +323,16 @@
                                                         </div>
                                                     </td>
                                                     <td colspan="2">
-                                                        <h6>{{ $tenant->property_name }}</h6>
-                                                        <p class="font-13">{{ $tenant->unit_name }}</p>
+                                                        @if (isset($unitAssignments) && $unitAssignments->count())
+                                                            @foreach ($unitAssignments as $assignment)
+                                                                <h6 class="{{ !$loop->first ? 'mt-2' : '' }}">
+                                                                    {{ $assignment->property?->name }}</h6>
+                                                                <p class="font-13">{{ $assignment->unit?->unit_name }}</p>
+                                                            @endforeach
+                                                        @else
+                                                            <h6>{{ $tenant->property_name }}</h6>
+                                                            <p class="font-13">{{ $tenant->unit_name }}</p>
+                                                        @endif
                                                     </td>
                                                 </tr>
                                                 <tr>
@@ -449,8 +457,16 @@
                                                         </div>
                                                     </td>
                                                     <td colspan="2">
-                                                        <h6>{{ $tenant->property_name }}</h6>
-                                                        <p class="font-13">{{ $tenant->unit_name }}</p>
+                                                        @if (isset($unitAssignments) && $unitAssignments->count())
+                                                            @foreach ($unitAssignments as $assignment)
+                                                                <h6 class="{{ !$loop->first ? 'mt-2' : '' }}">
+                                                                    {{ $assignment->property?->name }}</h6>
+                                                                <p class="font-13">{{ $assignment->unit?->unit_name }}</p>
+                                                            @endforeach
+                                                        @else
+                                                            <h6>{{ $tenant->property_name }}</h6>
+                                                            <p class="font-13">{{ $tenant->unit_name }}</p>
+                                                        @endif
                                                     </td>
                                                 </tr>
                                             </tbody>

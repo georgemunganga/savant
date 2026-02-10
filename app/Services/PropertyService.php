@@ -8,7 +8,7 @@ use App\Models\Property;
 use App\Models\PropertyDetail;
 use App\Models\PropertyImage;
 use App\Models\PropertyUnit;
-use App\Models\Tenant;
+use App\Models\TenantUnitAssignment;
 use App\Traits\ResponseTrait;
 use Exception;
 use Illuminate\Support\Facades\DB;
@@ -19,17 +19,22 @@ class PropertyService
 
     public function getAll()
     {
+        $occupiedSummarySql = "(select tenant_unit_assignments.property_id, COUNT(DISTINCT tenant_unit_assignments.unit_id) as occupied_unit
+            from tenant_unit_assignments
+            join tenants on tenants.id = tenant_unit_assignments.tenant_id
+            join users on users.id = tenants.user_id
+            where users.deleted_at IS NULL and tenants.status = " . TENANT_STATUS_ACTIVE . " and tenants.owner_user_id = " . getOwnerUserId() . "
+            group by tenant_unit_assignments.property_id) as occupied_summary";
+        $roomSummarySql = "(select property_units.property_id, SUM(property_units.bedroom) as rooms
+            from property_units
+            where property_units.deleted_at IS NULL
+            group by property_units.property_id) as room_summary";
+
         $data = Property::query()
             ->with('propertyUnits')
-            ->leftJoin('tenants', ['properties.id' => 'tenants.property_id', 'tenants.status' => (DB::raw(TENANT_STATUS_ACTIVE))])
-            ->leftJoin('users', function ($q) {
-                $q->on('tenants.user_id', 'users.id')->whereNull('users.deleted_at');
-            })
-            ->leftJoin('property_units', function ($q) {
-                $q->on('tenants.unit_id', 'property_units.id')->whereNull('property_units.deleted_at');
-            })
-            ->selectRaw('properties.number_of_unit - (COUNT(users.id)) as available_unit,(SUM(property_units.bedroom)) as rooms,properties.*')
-            ->groupBy('properties.id')
+            ->leftJoin(DB::raw($occupiedSummarySql), 'occupied_summary.property_id', '=', 'properties.id')
+            ->leftJoin(DB::raw($roomSummarySql), 'room_summary.property_id', '=', 'properties.id')
+            ->selectRaw('GREATEST(properties.number_of_unit - COALESCE(occupied_summary.occupied_unit, 0), 0) as available_unit, COALESCE(room_summary.rooms, 0) as rooms, properties.*')
             ->where('properties.owner_user_id', getOwnerUserId())
             ->get();
         return $data?->makeHidden(['updated_at', 'created_at', 'deleted_at']);
@@ -75,14 +80,30 @@ class PropertyService
 
     public function allUnit()
     {
+        $activeTenantSummary = TenantUnitAssignment::query()
+            ->join('tenants', 'tenant_unit_assignments.tenant_id', '=', 'tenants.id')
+            ->join('users', 'tenants.user_id', '=', 'users.id')
+            ->where('tenants.status', TENANT_STATUS_ACTIVE)
+            ->where('tenants.owner_user_id', getOwnerUserId())
+            ->whereNull('users.deleted_at')
+            ->selectRaw("tenant_unit_assignments.unit_id, COUNT(DISTINCT tenant_unit_assignments.tenant_id) as active_tenant_count, GROUP_CONCAT(DISTINCT CONCAT(users.first_name, ' ', users.last_name) ORDER BY users.first_name SEPARATOR ', ') as active_tenant_names, MIN(tenants.id) as first_tenant_id")
+            ->groupBy('tenant_unit_assignments.unit_id');
+
         $data = PropertyUnit::query()
             ->join('properties', ['property_units.property_id' => 'properties.id'])
-            ->leftJoin('tenants', ['property_units.id' => 'tenants.unit_id', 'tenants.status' => (DB::raw(TENANT_STATUS_ACTIVE))])
-            ->leftJoin('users', function ($q) {
-                $q->on('tenants.user_id', 'users.id')->whereNull('users.deleted_at');
+            ->leftJoinSub($activeTenantSummary, 'tenant_summary', function ($join) {
+                $join->on('property_units.id', '=', 'tenant_summary.unit_id');
             })
             ->leftJoin('file_managers', ['property_units.id' => 'file_managers.origin_id', 'file_managers.origin_type' => (DB::raw("'App\\\Models\\\PropertyUnit'"))])
-            ->select('property_units.*', 'properties.name as property_name', 'users.first_name', 'users.last_name', 'file_managers.file_name', 'file_managers.folder_name', 'tenants.id as tenantId')
+            ->select(
+                'property_units.*',
+                'properties.name as property_name',
+                'file_managers.file_name',
+                'file_managers.folder_name',
+                'tenant_summary.active_tenant_count',
+                'tenant_summary.active_tenant_names',
+                'tenant_summary.first_tenant_id'
+            )
             ->orderBy('properties.id', 'asc')
             ->where('properties.owner_user_id', getOwnerUserId())
             ->get();
@@ -91,11 +112,20 @@ class PropertyService
 
     public function getAllCount()
     {
+        $tenantPropertySummarySql = "(select tenant_unit_assignments.property_id,
+            COUNT(DISTINCT tenant_unit_assignments.tenant_id) as total_tenant,
+            COUNT(DISTINCT tenant_unit_assignments.unit_id) as occupied_unit
+            from tenant_unit_assignments
+            join tenants on tenants.id = tenant_unit_assignments.tenant_id
+            join users on users.id = tenants.user_id
+            where users.deleted_at IS NULL and tenants.status = " . TENANT_STATUS_ACTIVE . " and tenants.owner_user_id = " . getOwnerUserId() . "
+            group by tenant_unit_assignments.property_id) as tenant_property_summary";
+
         $data = Property::query()
-            ->leftJoin('tenants', ['properties.id' => 'tenants.property_id', 'tenants.status' => (DB::raw(TENANT_STATUS_ACTIVE))])
+            ->leftJoin(DB::raw($tenantPropertySummarySql), 'tenant_property_summary.property_id', '=', 'properties.id')
             ->leftJoin('property_details', 'properties.id', '=', 'property_details.property_id')
             ->leftJoin('maintainers', 'properties.id', '=', 'maintainers.property_id')
-            ->selectRaw('COUNT(DISTINCT tenants.id) as total_tenant,COUNT(DISTINCT maintainers.id) as total_maintainers,properties.*,property_details.address')
+            ->selectRaw('COALESCE(tenant_property_summary.total_tenant, 0) as total_tenant, COALESCE(tenant_property_summary.occupied_unit, 0) as occupied_unit, COUNT(DISTINCT maintainers.id) as total_maintainers,properties.*,property_details.address')
             ->groupBy('properties.id')
             ->orderBy('properties.id')
             ->where('properties.owner_user_id', getOwnerUserId())
@@ -110,16 +140,34 @@ class PropertyService
 
     public function getDetailsById($id)
     {
+        $tenantPropertySummarySql = "(select assignment_per_tenant.property_id,
+            COUNT(DISTINCT assignment_per_tenant.tenant_id) as total_tenant,
+            COUNT(DISTINCT assignment_per_tenant.unit_id) as occupied_unit,
+            AVG(assignment_per_tenant.general_rent) as avg_general_rent,
+            SUM(assignment_per_tenant.security_deposit) as total_security_deposit,
+            SUM(assignment_per_tenant.late_fee) as total_late_fee
+            from (
+                select tenant_unit_assignments.property_id, tenant_unit_assignments.unit_id, tenants.id as tenant_id,
+                    tenants.general_rent, tenants.security_deposit, tenants.late_fee
+                from tenant_unit_assignments
+                join tenants on tenants.id = tenant_unit_assignments.tenant_id
+                join users on users.id = tenants.user_id
+                where users.deleted_at IS NULL and tenants.status = " . TENANT_STATUS_ACTIVE . " and tenants.owner_user_id = " . getOwnerUserId() . "
+                group by tenant_unit_assignments.property_id, tenant_unit_assignments.unit_id, tenants.id, tenants.general_rent, tenants.security_deposit, tenants.late_fee
+            ) as assignment_per_tenant
+            group by assignment_per_tenant.property_id) as tenant_property_summary";
+
         $data = Property::query()
             ->leftJoin('property_details', 'properties.id', '=', 'property_details.property_id')
             ->leftJoin('users', function ($q) {
                 $q->on('properties.maintainer_id', '=', 'users.id')->whereNull('users.deleted_at');
             })
-            ->leftJoin('tenants', ['properties.id' => 'tenants.property_id', 'tenants.status' => (DB::raw(TENANT_STATUS_ACTIVE))])
-            ->selectRaw('properties.number_of_unit - (COUNT(tenants.id)) as available_unit,
-             (avg(tenants.general_rent)) as avg_general_rent,
-             sum(tenants.security_deposit) as total_security_deposit,
-             sum(tenants.late_fee) as total_late_fee,properties.*,
+            ->leftJoin(DB::raw($tenantPropertySummarySql), 'tenant_property_summary.property_id', '=', 'properties.id')
+            ->selectRaw('GREATEST(properties.number_of_unit - COALESCE(tenant_property_summary.occupied_unit, 0), 0) as available_unit,
+             COALESCE(tenant_property_summary.total_tenant, 0) as total_tenant,
+             tenant_property_summary.avg_general_rent as avg_general_rent,
+             COALESCE(tenant_property_summary.total_security_deposit, 0) as total_security_deposit,
+             COALESCE(tenant_property_summary.total_late_fee, 0) as total_late_fee,properties.*,
              property_details.lease_amount,
              property_details.lease_start_date,
              property_details.lease_end_date,
@@ -130,7 +178,6 @@ class PropertyService
              property_details.address,
              property_details.map_link,users.first_name,
              users.last_name')
-            ->groupBy('properties.id')
             ->where('properties.owner_user_id', getOwnerUserId())
             ->findOrFail($id);
         return $data?->makeHidden(['updated_at', 'created_at', 'deleted_at']);
@@ -138,13 +185,16 @@ class PropertyService
 
     public function getByType($type)
     {
+        $occupiedSummarySql = "(select tenant_unit_assignments.property_id, COUNT(DISTINCT tenant_unit_assignments.unit_id) as occupied_unit
+            from tenant_unit_assignments
+            join tenants on tenants.id = tenant_unit_assignments.tenant_id
+            join users on users.id = tenants.user_id
+            where users.deleted_at IS NULL and tenants.status = " . TENANT_STATUS_ACTIVE . " and tenants.owner_user_id = " . getOwnerUserId() . "
+            group by tenant_unit_assignments.property_id) as occupied_summary";
+
         return Property::query()
-            ->leftJoin('tenants', ['properties.id' => 'tenants.property_id', 'tenants.status' => (DB::raw(TENANT_STATUS_ACTIVE))])
-            ->leftJoin('users', function ($q) {
-                $q->on('tenants.user_id', 'users.id')->whereNull('users.deleted_at');
-            })
-            ->selectRaw('properties.number_of_unit - (COUNT(users.id)) as available_unit,properties.*')
-            ->groupBy('properties.id')
+            ->leftJoin(DB::raw($occupiedSummarySql), 'occupied_summary.property_id', '=', 'properties.id')
+            ->selectRaw('GREATEST(properties.number_of_unit - COALESCE(occupied_summary.occupied_unit, 0), 0) as available_unit,properties.*')
             ->where('properties.property_type', $type)
             ->where('properties.owner_user_id', getOwnerUserId())
             ->get();
@@ -160,10 +210,16 @@ class PropertyService
 
     public function getByTypeData($type)
     {
+        $occupiedSummarySql = "(select tenant_unit_assignments.property_id, COUNT(DISTINCT tenant_unit_assignments.unit_id) as occupied_unit
+            from tenant_unit_assignments
+            join tenants on tenants.id = tenant_unit_assignments.tenant_id
+            join users on users.id = tenants.user_id
+            where users.deleted_at IS NULL and tenants.status = " . TENANT_STATUS_ACTIVE . " and tenants.owner_user_id = " . getOwnerUserId() . "
+            group by tenant_unit_assignments.property_id) as occupied_summary";
+
         $properties = Property::query()
-            ->leftJoin('tenants', ['properties.id' => 'tenants.property_id', 'tenants.status' => (DB::raw(TENANT_STATUS_ACTIVE))])
-            ->selectRaw('properties.number_of_unit - (COUNT(tenants.id)) as available_unit,properties.*')
-            ->groupBy('properties.id')
+            ->leftJoin(DB::raw($occupiedSummarySql), 'occupied_summary.property_id', '=', 'properties.id')
+            ->selectRaw('GREATEST(properties.number_of_unit - COALESCE(occupied_summary.occupied_unit, 0), 0) as available_unit,properties.*')
             ->where('properties.property_type', $type)
             ->where('properties.owner_user_id', getOwnerUserId());
 
@@ -328,6 +384,7 @@ class PropertyService
                     $property_unit->bedroom = $request->single['bedroom'][$i];
                     $property_unit->bath = $request->single['bath'][$i];
                     $property_unit->kitchen = $request->single['kitchen'][$i];
+                    $property_unit->max_occupancy = $request->single['max_occupancy'][$i] ?? null;
                     $property_unit->save();
                 }
             } else {
@@ -345,6 +402,7 @@ class PropertyService
                     $property_unit->bedroom = $request->multiple['bedroom'][$i];
                     $property_unit->bath = $request->multiple['bath'][$i];
                     $property_unit->kitchen = $request->multiple['kitchen'][$i];
+                    $property_unit->max_occupancy = $request->multiple['max_occupancy'][$i] ?? null;
                     $property_unit->square_feet = $request->multiple['square_feet'][$i];
                     $property_unit->amenities = $request->multiple['amenities'][$i];
                     $property_unit->condition = $request->multiple['condition'][$i];
@@ -594,8 +652,12 @@ class PropertyService
     {
         DB::beginTransaction();
         try {
-            $tenant = Tenant::where('property_id', $id)->where('status', TENANT_STATUS_ACTIVE)->first();
-            if ($tenant) {
+            $activeAssignmentExists = TenantUnitAssignment::query()
+                ->join('tenants', 'tenant_unit_assignments.tenant_id', '=', 'tenants.id')
+                ->where('tenant_unit_assignments.property_id', $id)
+                ->where('tenants.status', TENANT_STATUS_ACTIVE)
+                ->exists();
+            if ($activeAssignmentExists) {
                 throw new Exception('Tenant Available! You can\'t delete');
             }
             $property = Property::where('owner_user_id', getOwnerUserId())->findOrFail($id);
@@ -625,15 +687,29 @@ class PropertyService
 
     public function getUnitsByPropertyId($id)
     {
+        $activeTenantSummary = TenantUnitAssignment::query()
+            ->join('tenants', 'tenant_unit_assignments.tenant_id', '=', 'tenants.id')
+            ->join('users', 'tenants.user_id', '=', 'users.id')
+            ->where('tenants.status', TENANT_STATUS_ACTIVE)
+            ->where('tenants.owner_user_id', getOwnerUserId())
+            ->whereNull('users.deleted_at')
+            ->selectRaw("tenant_unit_assignments.unit_id, COUNT(DISTINCT tenant_unit_assignments.tenant_id) as active_tenant_count, GROUP_CONCAT(DISTINCT CONCAT(users.first_name, ' ', users.last_name) ORDER BY users.first_name SEPARATOR ', ') as active_tenant_names, MIN(tenants.id) as first_tenant_id")
+            ->groupBy('tenant_unit_assignments.unit_id');
+
         $propertyUnits = PropertyUnit::query()
-            ->leftJoin('tenants', ['property_units.id' => 'tenants.unit_id', 'tenants.status' => (DB::raw(TENANT_STATUS_ACTIVE))])
-            ->leftJoin('users', function ($q) {
-                $q->on('tenants.user_id', 'users.id')->whereNull('users.deleted_at');
+            ->leftJoinSub($activeTenantSummary, 'tenant_summary', function ($join) {
+                $join->on('property_units.id', '=', 'tenant_summary.unit_id');
             })
             ->leftJoin('file_managers', ['property_units.id' => 'file_managers.origin_id', 'file_managers.origin_type' => (DB::raw("'App\\\Models\\\PropertyUnit'"))])
-            ->select('property_units.*', 'tenants.status as tenant_status', 'tenants.user_id', 'users.first_name', 'users.last_name', 'users.email', 'file_managers.file_name', 'file_managers.folder_name')
+            ->select(
+                'property_units.*',
+                'file_managers.file_name',
+                'file_managers.folder_name',
+                'tenant_summary.active_tenant_count',
+                'tenant_summary.active_tenant_names',
+                'tenant_summary.first_tenant_id'
+            )
             ->where('property_units.property_id', $id)
-            ->groupBy('property_units.id')
             ->get();
         return $this->success($propertyUnits);
     }
@@ -641,8 +717,12 @@ class PropertyService
     public function unitDelete($id)
     {
         try {
-            $tenant = Tenant::where('unit_id', $id)->where('status', TENANT_STATUS_ACTIVE)->first();
-            if ($tenant) {
+            $activeAssignmentExists = TenantUnitAssignment::query()
+                ->join('tenants', 'tenant_unit_assignments.tenant_id', '=', 'tenants.id')
+                ->where('tenant_unit_assignments.unit_id', $id)
+                ->where('tenants.status', TENANT_STATUS_ACTIVE)
+                ->exists();
+            if ($activeAssignmentExists) {
                 throw new Exception('Tenant Available! You can\'t delete');
             }
 
@@ -671,13 +751,16 @@ class PropertyService
 
     public function getPropertySearch($type, $searchItem)
     {
+        $occupiedSummarySql = "(select tenant_unit_assignments.property_id, COUNT(DISTINCT tenant_unit_assignments.unit_id) as occupied_unit
+            from tenant_unit_assignments
+            join tenants on tenants.id = tenant_unit_assignments.tenant_id
+            join users on users.id = tenants.user_id
+            where users.deleted_at IS NULL and tenants.status = " . TENANT_STATUS_ACTIVE . " and tenants.owner_user_id = " . getOwnerUserId() . "
+            group by tenant_unit_assignments.property_id) as occupied_summary";
+
         return Property::query()
-            ->leftJoin('tenants', ['properties.id' => 'tenants.property_id', 'tenants.status' => (DB::raw(TENANT_STATUS_ACTIVE))])
-            ->leftJoin('users', function ($q) {
-                $q->on('tenants.user_id', 'users.id')->whereNull('users.deleted_at');
-            })
-            ->selectRaw('properties.number_of_unit - (COUNT(users.id)) as available_unit,properties.*')
-            ->groupBy('properties.id')
+            ->leftJoin(DB::raw($occupiedSummarySql), 'occupied_summary.property_id', '=', 'properties.id')
+            ->selectRaw('GREATEST(properties.number_of_unit - COALESCE(occupied_summary.occupied_unit, 0), 0) as available_unit,properties.*')
             ->where('properties.property_type', $type)
             ->where('properties.name', 'LIKE', "%{$searchItem}%")
             ->where('properties.owner_user_id', getOwnerUserId())

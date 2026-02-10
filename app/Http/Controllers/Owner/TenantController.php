@@ -7,6 +7,9 @@ use App\Http\Requests\TenantCloseRequest;
 use App\Http\Requests\TenantDeleteRequest;
 use App\Http\Requests\TenantRequest;
 use App\Models\Property;
+use App\Models\PropertyUnit;
+use App\Models\Tenant;
+use App\Models\TenantUnitAssignment;
 use App\Services\InvoiceTypeService;
 use App\Services\LocationService;
 use App\Services\PropertyService;
@@ -66,12 +69,107 @@ class TenantController extends Controller
         return view('owner.tenants.add', $data);
     }
 
+    public function bulkAssignment()
+    {
+        $data['pageTitle'] = __('Bulk Unit Assignment');
+        $data['navTenantMMShowClass'] = 'mm-show';
+        $data['subNavTenantBulkMMActiveClass'] = 'mm-active';
+        $data['subNavTenantBulkActiveClass'] = 'active';
+
+        $data['tenants'] = Tenant::query()
+            ->join('users', 'tenants.user_id', '=', 'users.id')
+            ->whereNull('users.deleted_at')
+            ->where('tenants.owner_user_id', getOwnerUserId())
+            ->where('tenants.status', '!=', TENANT_STATUS_CLOSE)
+            ->select([
+                'tenants.id',
+                'tenants.property_id',
+                'tenants.unit_id',
+                'users.first_name',
+                'users.last_name',
+                'users.email',
+            ])
+            ->orderBy('users.first_name')
+            ->orderBy('users.last_name')
+            ->get();
+
+        $data['properties'] = Property::query()
+            ->where('owner_user_id', getOwnerUserId())
+            ->select(['id', 'name'])
+            ->orderBy('name')
+            ->get();
+
+        $data['units'] = PropertyUnit::query()
+            ->join('properties', 'property_units.property_id', '=', 'properties.id')
+            ->where('properties.owner_user_id', getOwnerUserId())
+            ->select([
+                'property_units.id',
+                'property_units.property_id',
+                'property_units.unit_name',
+                'properties.name as property_name',
+            ])
+            ->orderBy('properties.name')
+            ->orderBy('property_units.unit_name')
+            ->get();
+
+        $data['bulkAssignmentData'] = [
+            'tenants' => $data['tenants']->map(function ($tenant) {
+                return [
+                    'id' => $tenant->id,
+                    'name' => trim($tenant->first_name . ' ' . $tenant->last_name),
+                    'email' => $tenant->email,
+                    'property_id' => $tenant->property_id,
+                    'unit_id' => $tenant->unit_id,
+                ];
+            })->values(),
+            'properties' => $data['properties']->map(function ($property) {
+                return [
+                    'id' => $property->id,
+                    'name' => $property->name,
+                ];
+            })->values(),
+            'units' => $data['units']->map(function ($unit) {
+                return [
+                    'id' => $unit->id,
+                    'property_id' => $unit->property_id,
+                    'name' => $unit->unit_name,
+                    'property_name' => $unit->property_name,
+                ];
+            })->values(),
+            'tenantAssignments' => TenantUnitAssignment::query()
+                ->join('tenants', 'tenant_unit_assignments.tenant_id', '=', 'tenants.id')
+                ->where('tenants.owner_user_id', getOwnerUserId())
+                ->select([
+                    'tenant_unit_assignments.tenant_id',
+                    'tenant_unit_assignments.property_id',
+                    'tenant_unit_assignments.unit_id',
+                ])
+                ->get()
+                ->values(),
+        ];
+
+        return view('owner.tenants.bulk-assignment', $data);
+    }
+
+    public function bulkAssignmentStore(Request $request)
+    {
+        $request->validate([
+            'assignments' => ['required', 'array', 'min:1'],
+            'assignments.*.tenant_id' => ['required', 'integer'],
+            'assignments.*.property_id' => ['required', 'integer'],
+            'assignments.*.unit_id' => ['required', 'integer'],
+        ]);
+
+        return $this->tenantService->bulkAssignmentStore($request);
+    }
+
     public function edit($id)
     {
         $data['pageTitle'] = __('Edit Tenant');
         $data['subNavAllTenantMMActiveClass'] = 'mm-active';
         $data['subNavAllTenantActiveClass'] = 'active';
         $data['tenant'] = $this->tenantService->getDetailsById($id);
+        $data['unitAssignments'] = $this->tenantService->getUnitAssignmentsByTenantId((int) $id);
         $data['countries'] = $this->locationService->getCountry()->getData()->data;
         $data['previousStates'] = $this->locationService->getStateByCountryId($data['tenant']->previous_country_id)->getData()->data->states;
         $data['previousSities'] = $this->locationService->getCitiesByStateId($data['tenant']->previous_state_id)->getData()->data->cities;
@@ -104,17 +202,20 @@ class TenantController extends Controller
             $data['pageTitle'] = __('Profile');
             $data['navTenantProfileActiveClass'] = 'active';
             $data['tenant'] = $this->tenantService->getDetailsById($id);
+            $data['unitAssignments'] = $this->tenantService->getUnitAssignmentsByTenantId((int) $id);
             $data['paymentDueInvoiceCount'] = count($this->tenantService->paymentDue($id));
             return view('owner.tenants.details.profile', $data);
         } elseif ($request->tab == 'home') {
             $data['pageTitle'] = __('Home Details');
             $data['navTenantHomeActiveClass'] = 'active';
             $data['tenant'] = $this->tenantService->getDetailsById($id);
+            $data['unitAssignments'] = $this->tenantService->getUnitAssignmentsByTenantId((int) $id);
             return view('owner.tenants.details.home', $data);
         } elseif ($request->tab == 'payment') {
             $data['pageTitle'] = __('Payment Details');
             $data['navTenantPaymentActiveClass'] = 'active';
             $data['tenant'] = $this->tenantService->getById($id);
+            $data['unitAssignments'] = $this->tenantService->getUnitAssignmentsByTenantId((int) $id);
             $data['invoiceTypes'] = $this->invoiceTypeService->getAll();
             if ($request->ajax()) {
                 return $this->tenantService->payment($id);

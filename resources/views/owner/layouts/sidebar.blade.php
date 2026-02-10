@@ -62,6 +62,14 @@
                                 <a href="{{ route('owner.tenant.index', ['type' => 'history']) }}"
                                     class="{{ @$subNavTenantHistoryActiveClass }}">{{ __('Tenant History') }}</a>
                             </li>
+                            <li class="{{ @$subNavTenantBulkMMActiveClass }}">
+                                <a href="{{ route('owner.tenant.bulk-assignment') }}"
+                                    class="{{ @$subNavTenantBulkActiveClass }}">{{ __('Bulk Unit Assignment') }}</a>
+                            </li>
+                            <li class="{{ @$subNavTenantAllUnitMMActiveClass }}">
+                                <a href="{{ route('owner.property.allUnit') }}"
+                                    class="{{ @$subNavTenantAllUnitActiveClass }}">{{ __('All Unit') }}</a>
+                            </li>
                         </ul>
                     </li>
                 @endcan

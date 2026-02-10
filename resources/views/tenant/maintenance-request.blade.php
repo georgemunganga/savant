@@ -82,11 +82,32 @@
                 </div>
                 <form class="ajax" action="{{ route('tenant.maintenance-request.store') }}" method="POST"
                     data-handler="getShowMessage">
-                    <input type="hidden" name="property_id" value="{{ $tenant->property_id }}">
-                    <input type="hidden" name="unit_id" value="{{ $tenant->unit_id }}">
+                    <input type="hidden" name="property_id" class="property_id_hidden"
+                        value="{{ optional($unitAssignments->first())->property_id ?? $tenant->property_id }}">
+                    <input type="hidden" name="unit_id" class="unit_id_hidden"
+                        value="{{ optional($unitAssignments->first())->unit_id ?? $tenant->unit_id }}">
                     <div class="modal-body">
                         <!-- Modal Inner Form Box Start -->
                         <div class="modal-inner-form-box">
+                            <div class="row">
+                                <div class="col-md-12 mb-25">
+                                    <label
+                                        class="label-text-title color-heading font-medium mb-2">{{ __('Home / Unit') }}</label>
+                                    <select class="form-select flex-shrink-0 assignment_select" id="addMaintenanceAssignmentSelect">
+                                        @if (isset($unitAssignments) && $unitAssignments->count())
+                                            @foreach ($unitAssignments as $assignment)
+                                                <option value="{{ $assignment->unit_id }}" data-property-id="{{ $assignment->property_id }}" @if ($loop->first) selected @endif>
+                                                    {{ $assignment->property?->name }} - {{ $assignment->unit?->unit_name }}
+                                                </option>
+                                            @endforeach
+                                        @else
+                                            <option value="{{ $tenant->unit_id }}" data-property-id="{{ $tenant->property_id }}" selected>
+                                                {{ __('Default Unit') }}
+                                            </option>
+                                        @endif
+                                    </select>
+                                </div>
+                            </div>
                             <div class="row">
                                 <div class="col-md-12 mb-25">
                                     <label
@@ -136,12 +157,33 @@
                 </div>
                 <form class="ajax" action="{{ route('tenant.maintenance-request.store') }}" method="POST"
                     data-handler="getShowMessage">
-                    <input type="hidden" name="property_id" value="{{ $tenant->property_id }}">
-                    <input type="hidden" name="unit_id" value="{{ $tenant->unit_id }}">
+                    <input type="hidden" name="property_id" class="property_id_hidden"
+                        value="{{ optional($unitAssignments->first())->property_id ?? $tenant->property_id }}">
+                    <input type="hidden" name="unit_id" class="unit_id_hidden"
+                        value="{{ optional($unitAssignments->first())->unit_id ?? $tenant->unit_id }}">
                     <input type="hidden" name="id" class="id">
                     <div class="modal-body">
                         <!-- Modal Inner Form Box Start -->
                         <div class="modal-inner-form-box">
+                            <div class="row">
+                                <div class="col-md-12 mb-25">
+                                    <label
+                                        class="label-text-title color-heading font-medium mb-2">{{ __('Home / Unit') }}</label>
+                                    <select class="form-select flex-shrink-0 assignment_select" id="editMaintenanceAssignmentSelect">
+                                        @if (isset($unitAssignments) && $unitAssignments->count())
+                                            @foreach ($unitAssignments as $assignment)
+                                                <option value="{{ $assignment->unit_id }}" data-property-id="{{ $assignment->property_id }}" @if ($loop->first) selected @endif>
+                                                    {{ $assignment->property?->name }} - {{ $assignment->unit?->unit_name }}
+                                                </option>
+                                            @endforeach
+                                        @else
+                                            <option value="{{ $tenant->unit_id }}" data-property-id="{{ $tenant->property_id }}" selected>
+                                                {{ __('Default Unit') }}
+                                            </option>
+                                        @endif
+                                    </select>
+                                </div>
+                            </div>
                             <div class="row">
                                 <div class="col-md-12 mb-25">
                                     <label

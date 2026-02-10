@@ -4,6 +4,9 @@ $(document).on('click', '#add', function () {
     selector.find('.error-message').remove();
     selector.modal('show');
     selector.find('form').trigger("reset");
+    var selectedAssignment = selector.find('#addMaintenanceAssignmentSelect option:selected');
+    selector.find('.property_id_hidden').val(selectedAssignment.data('property-id') || '');
+    selector.find('.unit_id_hidden').val(selectedAssignment.val() || '');
 });
 
 $(document).on('click', '.edit', function () {
@@ -18,8 +21,28 @@ function getDataEditRes(response) {
 
     selector.find('.issue_id').val(response.data.issue_id);
     selector.find('.details').text(response.data.details);
+    selector.find('#editMaintenanceAssignmentSelect option').prop('selected', false);
+    var match = selector.find('#editMaintenanceAssignmentSelect option').filter(function () {
+        return String($(this).val()) === String(response.data.unit_id) &&
+            String($(this).data('property-id')) === String(response.data.property_id);
+    });
+    if (match.length) {
+        match.first().prop('selected', true);
+    } else {
+        selector.find('#editMaintenanceAssignmentSelect option:first').prop('selected', true);
+    }
+    var selectedAssignment = selector.find('#editMaintenanceAssignmentSelect option:selected');
+    selector.find('.property_id_hidden').val(selectedAssignment.data('property-id') || response.data.property_id || '');
+    selector.find('.unit_id_hidden').val(selectedAssignment.val() || response.data.unit_id || '');
     selector.modal('show');
 }
+
+$(document).on('change', '.assignment_select', function () {
+    var selector = $(this).closest('.modal-content');
+    var selectedAssignment = $(this).find('option:selected');
+    selector.find('.property_id_hidden').val(selectedAssignment.data('property-id') || '');
+    selector.find('.unit_id_hidden').val(selectedAssignment.val() || '');
+});
 
 (function ($) {
     "use strict";
