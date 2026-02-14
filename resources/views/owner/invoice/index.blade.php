@@ -229,6 +229,15 @@
                                 </div>
                             </div>
                             <div class="row">
+                                <div class="col-md-12 mb-25">
+                                    <label
+                                        class="label-text-title color-heading font-medium mb-2">{{ __('Tenant') }}</label>
+                                    <select class="form-select flex-shrink-0 tenantSelectOption" name="tenant_id">
+                                        <option value="">--{{ __('Select Tenant') }}--</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="row">
                                 <div class="col-md-6 mb-25">
                                     <label
                                         class="label-text-title color-heading font-medium mb-2">{{ __('Month') }}</label>
@@ -344,6 +353,15 @@
                                     <select class="form-select flex-shrink-0 propertyUnitSelectOption"
                                             name="property_unit_id">
                                         <option value="">--{{ __('Select Option') }}--</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-12 mb-25">
+                                    <label
+                                        class="label-text-title color-heading font-medium mb-2">{{ __('Tenant') }}</label>
+                                    <select class="form-select flex-shrink-0 tenantSelectOption" name="tenant_id">
+                                        <option value="">--{{ __('Select Tenant') }}--</option>
                                     </select>
                                 </div>
                             </div>
@@ -719,7 +737,9 @@
         </div>
     </div>
 
-    <input type="hidden" class="invoiceTypes" value="{{ $invoiceTypes }}">
+    <input type="hidden" class="invoiceTypes" value='@json($invoiceTypes)'>
+    <input type="hidden" class="invoiceTenants" value='@json($invoiceTenants)'>
+    <input type="hidden" class="tenantAssignments" value='@json($tenantAssignments)'>
     <input type="hidden" id="getPropertyUnitsRoute" value="{{ route('owner.property.getPropertyUnits') }}">
     <input type="hidden" id="invoiceIndex" value="{{ route('owner.invoice.index') }}">
     <input type="hidden" id="invoicePaid" value="{{ route('owner.invoice.paid') }}">
@@ -747,10 +767,87 @@
         //     "use strict"
         var stateSelector;
         var invoiceTypes = JSON.parse($('.invoiceTypes').val());
+        var invoiceTenants = JSON.parse($('.invoiceTenants').val());
+        var tenantAssignments = JSON.parse($('.tenantAssignments').val());
+        var pendingInvoiceSelection = {};
         var typesHtml = '';
         Object.entries(invoiceTypes).forEach((type) => {
             typesHtml += '<option value="' + type[1].id + '">' + type[1].name + '</option>';
         });
+
+        function getTenantByPropertyAndUnit(propertyId, unitId) {
+            var seen = {};
+            return invoiceTenants.filter(function (tenant) {
+                var tenantId = String(tenant.id);
+                var directPropertyMatch = !propertyId || String(tenant.property_id) === String(propertyId);
+                var directUnitMatch = !unitId || String(tenant.unit_id) === String(unitId);
+
+                var assignmentPropertyMatch = tenantAssignments.some(function (assignment) {
+                    if (String(assignment.tenant_id) !== tenantId) {
+                        return false;
+                    }
+                    return !propertyId || String(assignment.property_id) === String(propertyId);
+                });
+
+                var assignmentUnitMatch = tenantAssignments.some(function (assignment) {
+                    if (String(assignment.tenant_id) !== tenantId) {
+                        return false;
+                    }
+
+                    var propertyMatches = !propertyId || String(assignment.property_id) === String(propertyId);
+                    var unitMatches = !unitId || String(assignment.unit_id) === String(unitId);
+                    return propertyMatches && unitMatches;
+                });
+
+                var propertyMatched = directPropertyMatch || assignmentPropertyMatch;
+                var unitMatched = directUnitMatch || assignmentUnitMatch;
+                var matched = propertyMatched && unitMatched;
+
+                if (matched && !seen[tenantId]) {
+                    seen[tenantId] = true;
+                    return true;
+                }
+
+                return false;
+            });
+        }
+
+        function initTenantSearch(modalSelector) {
+            var tenantSelect = modalSelector.find('.tenantSelectOption');
+            if (!tenantSelect.length || typeof $.fn.select2 === 'undefined') {
+                return;
+            }
+
+            if (tenantSelect.hasClass('select2-hidden-accessible')) {
+                tenantSelect.select2('destroy');
+            }
+
+            tenantSelect.select2({
+                dropdownParent: modalSelector,
+                width: '100%'
+            });
+        }
+
+        function renderTenantOptions(modalSelector, selectedTenantId = '') {
+            var propertyId = modalSelector.find('select[name=property_id]').val();
+            var unitId = modalSelector.find('select[name=property_unit_id]').val();
+            var tenants = getTenantByPropertyAndUnit(propertyId, unitId);
+            var html = '<option value="">--{{ __('Select Tenant') }}--</option>';
+
+            tenants.forEach(function (tenant) {
+                html += '<option value="' + tenant.id + '">' + tenant.first_name + ' ' + tenant.last_name + ' (' + tenant.email + ')</option>';
+            });
+
+            modalSelector.find('.tenantSelectOption').html(html);
+            if (selectedTenantId) {
+                modalSelector.find('.tenantSelectOption').val(String(selectedTenantId));
+            }
+            modalSelector.find('.tenantSelectOption').trigger('change.select2');
+        }
+
+        initTenantSearch($('#createNewInvoiceModal'));
+        initTenantSearch($('#editInvoiceModal'));
+
         $('#createReminderModal').on('click', function () {
             $('#showFormNoticeModal').modal('toggle');
         });
@@ -761,6 +858,7 @@
             selector.find('.error-message').remove();
             selector.modal('show')
             selector.find('form').trigger('reset');
+            renderTenantOptions(selector);
         });
 
         $(document).on("click", ".add-field", function () {
@@ -811,10 +909,11 @@
             selector.find('input[name=id]').val(response.data.invoice.id)
             selector.find('input[name=name]').val(response.data.invoice.name)
             selector.find('select[name=property_id]').val(response.data.invoice.property_id)
+            pendingInvoiceSelection.editInvoiceModal = {
+                unit_id: response.data.invoice.property_unit_id,
+                tenant_id: response.data.invoice.tenant_id
+            };
             getPropertyUnits(response.data.invoice.property_id)
-            setTimeout(() => {
-                selector.find('select[name=property_unit_id]').val(response.data.invoice.property_unit_id)
-            }, 2000);
             selector.find('select[name=month]').val(response.data.invoice.month)
             selector.find('input[name=due_date]').val(response.data.invoice.due_date)
 
@@ -956,6 +1055,11 @@
         $(document).on('change', '.property_id', function () {
             stateSelector = $(this);
             getPropertyUnits(stateSelector.val());
+            renderTenantOptions(stateSelector.closest('.modal'));
+        });
+
+        $(document).on('change', 'select[name=property_unit_id]', function () {
+            renderTenantOptions($(this).closest('.modal'));
         });
 
         function getPropertyUnits(property_id) {
@@ -972,7 +1076,16 @@
                     html += '<option value="' + opt.id + '">' + opt.unit_name + '</option>';
                 }
             });
-            stateSelector.closest('.modal').find('.propertyUnitSelectOption').html(html);
+            var modalSelector = stateSelector.closest('.modal');
+            modalSelector.find('.propertyUnitSelectOption').html(html);
+            var modalId = modalSelector.attr('id');
+            if (modalId && pendingInvoiceSelection[modalId]) {
+                modalSelector.find('select[name=property_unit_id]').val(pendingInvoiceSelection[modalId].unit_id);
+                renderTenantOptions(modalSelector, pendingInvoiceSelection[modalId].tenant_id);
+                delete pendingInvoiceSelection[modalId];
+            } else {
+                renderTenantOptions(modalSelector);
+            }
         }
 
         $(document).on('click', '.reminder', function () {

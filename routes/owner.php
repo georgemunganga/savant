@@ -125,6 +125,9 @@ Route::group(['prefix' => 'owner', 'as' => 'owner.', 'middleware' => ['auth', 'o
 
     Route::group(['prefix' => 'invoice', 'as' => 'invoice.'], function () {
         Route::get('/', [InvoiceController::class, 'index'])->name('index')->middleware('can:Manage Billing');
+        Route::get('rent-arrears', [InvoiceController::class, 'rentArrears'])->name('rent-arrears')->middleware('can:Manage Billing');
+        Route::post('rent-arrears/generate', [InvoiceController::class, 'generateRentArrearsInvoices'])->name('rent-arrears.generate')->middleware('can:Manage Billing');
+        Route::post('rent-arrears/reminder', [InvoiceController::class, 'sendRentArrearsReminder'])->name('rent-arrears.reminder')->middleware('can:Manage Billing');
         Route::get('paid', [InvoiceController::class, 'paidInvoiceIndex'])->name('paid');
         Route::get('pending', [InvoiceController::class, 'pendingInvoiceIndex'])->name('pending');
         Route::get('bank-pending', [InvoiceController::class, 'bankPendingInvoice'])->name('bank.pending');

@@ -84,6 +84,9 @@
                                 <a href="{{ route('owner.invoice.index') }}" class="">{{ __('All Invoices') }}</a>
                             </li>
                             <li class="">
+                                <a href="{{ route('owner.invoice.rent-arrears') }}" class="">{{ __('Rent Arrears') }}</a>
+                            </li>
+                            <li class="">
                                 <a href="{{ route('owner.invoice.recurring-setting.index') }}"
                                     class="">{{ __('Recurring Setting') }}</a>
                             </li>

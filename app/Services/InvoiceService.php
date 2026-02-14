@@ -340,7 +340,7 @@ class InvoiceService
                 $tenant = Tenant::query()
                     ->where('owner_user_id', getOwnerUserId())
                     ->where('id', $request->tenant_id)
-                    ->where('status', TENANT_STATUS_ACTIVE)
+                    ->whereIn('status', [TENANT_STATUS_ACTIVE, TENANT_STATUS_DRAFT])
                     ->first();
 
                 if (!$tenant) {
@@ -359,7 +359,7 @@ class InvoiceService
             }
 
             if (!$tenant) {
-                $tenant = Tenant::where('owner_user_id', getOwnerUserId())->where('unit_id', $request->property_unit_id)->where('status', TENANT_STATUS_ACTIVE)->first();
+                $tenant = Tenant::where('owner_user_id', getOwnerUserId())->where('unit_id', $request->property_unit_id)->whereIn('status', [TENANT_STATUS_ACTIVE, TENANT_STATUS_DRAFT])->first();
             }
 
             if (!$tenant) {
