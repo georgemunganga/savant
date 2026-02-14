@@ -770,6 +770,7 @@
         var invoiceTenants = JSON.parse($('.invoiceTenants').val());
         var tenantAssignments = JSON.parse($('.tenantAssignments').val());
         var pendingInvoiceSelection = {};
+        var unitRentByModal = {};
         var typesHtml = '';
         Object.entries(invoiceTypes).forEach((type) => {
             typesHtml += '<option value="' + type[1].id + '">' + type[1].name + '</option>';
@@ -845,6 +846,57 @@
             modalSelector.find('.tenantSelectOption').trigger('change.select2');
         }
 
+        function getInvoiceTypeById(typeId) {
+            var matchedType = null;
+            Object.entries(invoiceTypes).forEach(function (type) {
+                if (String(type[1].id) === String(typeId)) {
+                    matchedType = type[1];
+                }
+            });
+            return matchedType;
+        }
+
+        function isRentalType(typeName) {
+            if (!typeName) {
+                return false;
+            }
+            var name = String(typeName).toLowerCase();
+            return name.indexOf('rent') !== -1 || name.indexOf('rental') !== -1;
+        }
+
+        function getSelectedUnitRent(modalSelector) {
+            var modalId = modalSelector.attr('id');
+            var unitId = modalSelector.find('select[name=property_unit_id]').val();
+            if (!modalId || !unitId || !unitRentByModal[modalId]) {
+                return '';
+            }
+            return unitRentByModal[modalId][String(unitId)] || '';
+        }
+
+        function autoFillRentalAmountForRow(rowSelector, modalSelector, onlyWhenEmpty = false) {
+            var typeId = rowSelector.find('.invoiceItem-invoice_type_id').val();
+            var invoiceType = getInvoiceTypeById(typeId);
+            if (!invoiceType || !isRentalType(invoiceType.name)) {
+                return;
+            }
+
+            var amountInput = rowSelector.find('.invoiceItem-amount');
+            if (onlyWhenEmpty && String(amountInput.val()).trim() !== '') {
+                return;
+            }
+
+            var unitRent = getSelectedUnitRent(modalSelector);
+            if (unitRent !== '') {
+                amountInput.val(unitRent);
+            }
+        }
+
+        function autoFillRentalAmounts(modalSelector, onlyWhenEmpty = false) {
+            modalSelector.find('.multi-field').each(function () {
+                autoFillRentalAmountForRow($(this), modalSelector, onlyWhenEmpty);
+            });
+        }
+
         initTenantSearch($('#createNewInvoiceModal'));
         initTenantSearch($('#editInvoiceModal'));
 
@@ -862,7 +914,8 @@
         });
 
         $(document).on("click", ".add-field", function () {
-            $(this).closest('form').find('.multi-fields').append(
+            var formSelector = $(this).closest('form');
+            formSelector.find('.multi-fields').append(
                 `<div class="multi-field border-bottom pb-25 mb-25">
                 <input type="hidden" name="invoiceItem[id][]" class="" value="">
                 <div class="modal-inner-form-box bg-off-white theme-border radius-4 p-20 mb-20">
@@ -889,6 +942,7 @@
                 <button type="button" class="remove-field red-color">{{__('Remove')}}</button>
             </div>`
             )
+            autoFillRentalAmounts(formSelector.closest('.modal'), true);
         });
 
         $(document).on("click", ".remove-field", function () {
@@ -1059,7 +1113,15 @@
         });
 
         $(document).on('change', 'select[name=property_unit_id]', function () {
-            renderTenantOptions($(this).closest('.modal'));
+            var modalSelector = $(this).closest('.modal');
+            renderTenantOptions(modalSelector);
+            autoFillRentalAmounts(modalSelector, true);
+        });
+
+        $(document).on('change', '.invoiceItem-invoice_type_id', function () {
+            var rowSelector = $(this).closest('.multi-field');
+            var modalSelector = $(this).closest('.modal');
+            autoFillRentalAmountForRow(rowSelector, modalSelector, false);
         });
 
         function getPropertyUnits(property_id) {
@@ -1069,22 +1131,29 @@
 
         function getPropertyUnitsRes(response) {
             var html = '<option value="">--Select Unit--</option>';
+            var rentMap = {};
             response.data.forEach(function (opt) {
                 if (opt.first_name != null) {
                     html += '<option value="' + opt.id + '">' + opt.unit_name + ' (' + opt.first_name + ' ' + opt.last_name + ')</option>';
                 } else {
                     html += '<option value="' + opt.id + '">' + opt.unit_name + '</option>';
                 }
+                rentMap[String(opt.id)] = opt.general_rent ?? '';
             });
             var modalSelector = stateSelector.closest('.modal');
             modalSelector.find('.propertyUnitSelectOption').html(html);
             var modalId = modalSelector.attr('id');
+            if (modalId) {
+                unitRentByModal[modalId] = rentMap;
+            }
             if (modalId && pendingInvoiceSelection[modalId]) {
                 modalSelector.find('select[name=property_unit_id]').val(pendingInvoiceSelection[modalId].unit_id);
                 renderTenantOptions(modalSelector, pendingInvoiceSelection[modalId].tenant_id);
+                autoFillRentalAmounts(modalSelector, true);
                 delete pendingInvoiceSelection[modalId];
             } else {
                 renderTenantOptions(modalSelector);
+                autoFillRentalAmounts(modalSelector, true);
             }
         }
 

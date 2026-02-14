@@ -65,10 +65,12 @@ class InvoiceService
             ->leftJoin('orders', 'invoices.order_id', '=', 'orders.id')
             ->leftJoin('properties', 'invoices.property_id', '=', 'properties.id')
             ->leftJoin('property_units', 'property_units.id', '=', 'invoices.property_unit_id')
+            ->leftJoin('tenants', 'invoices.tenant_id', '=', 'tenants.id')
+            ->leftJoin('users', 'tenants.user_id', '=', 'users.id')
             ->leftJoin('gateways', 'orders.gateway_id', '=', 'gateways.id')
             ->leftJoin('file_managers', ['orders.deposit_slip_id' => 'file_managers.id', 'file_managers.origin_type' => (DB::raw("'App\\\Models\\\Order'"))])
             ->orderByDesc('invoices.id')
-            ->select(['invoices.*', 'gateways.title as gatewayTitle', 'gateways.slug as gatewaySlug', 'file_managers.file_name', 'file_managers.folder_name', 'properties.name as property_name', 'property_units.unit_name']);
+            ->select(['invoices.*', 'gateways.title as gatewayTitle', 'gateways.slug as gatewaySlug', 'file_managers.file_name', 'file_managers.folder_name', 'properties.name as property_name', 'property_units.unit_name', 'users.first_name as tenant_first_name', 'users.last_name as tenant_last_name', 'users.email as tenant_email']);
 
         return datatables($invoice)
             ->addColumn('invoice', function ($invoice) {
@@ -76,8 +78,11 @@ class InvoiceService
                         <p class="font-13">' . $invoice->name . '</p>';
             })
             ->addColumn('property', function ($invoice) {
+                $tenantName = trim(($invoice->tenant_first_name ?? '') . ' ' . ($invoice->tenant_last_name ?? ''));
+                $tenantHtml = $tenantName ? '<p class="font-12 mb-0">' . __('Tenant') . ': ' . $tenantName . '</p>' : '';
                 return '<h6>' . $invoice->property_name . '</h6>
-                        <p class="font-13">' . $invoice->unit_name . '</p>';
+                        <p class="font-13">' . $invoice->unit_name . '</p>
+                        ' . $tenantHtml;
             })
             ->addColumn('due_date', function ($item) {
                 return $item->due_date;
@@ -127,7 +132,9 @@ class InvoiceService
         $invoice = Invoice::where('invoices.owner_user_id', getOwnerUserId())
             ->leftJoin('properties', 'invoices.property_id', '=', 'properties.id')
             ->leftJoin('property_units', 'property_units.id', '=', 'invoices.property_unit_id')
-            ->select(['invoices.*', 'properties.name as property_name', 'property_units.unit_name'])
+            ->leftJoin('tenants', 'invoices.tenant_id', '=', 'tenants.id')
+            ->leftJoin('users', 'tenants.user_id', '=', 'users.id')
+            ->select(['invoices.*', 'properties.name as property_name', 'property_units.unit_name', 'users.first_name as tenant_first_name', 'users.last_name as tenant_last_name', 'users.email as tenant_email'])
             ->orderByDesc('invoices.id')
             ->where('invoices.status', INVOICE_STATUS_PAID);
         return datatables($invoice)
@@ -136,8 +143,11 @@ class InvoiceService
                         <p class="font-13">' . $invoice->name . '</p>';
             })
             ->addColumn('property', function ($invoice) {
+                $tenantName = trim(($invoice->tenant_first_name ?? '') . ' ' . ($invoice->tenant_last_name ?? ''));
+                $tenantHtml = $tenantName ? '<p class="font-12 mb-0">' . __('Tenant') . ': ' . $tenantName . '</p>' : '';
                 return '<h6>' . $invoice->property_name . '</h6>
-                        <p class="font-13">' . $invoice->unit_name . '</p>';
+                        <p class="font-13">' . $invoice->unit_name . '</p>
+                        ' . $tenantHtml;
             })
             ->addColumn('due_date', function ($item) {
                 return $item->due_date;
@@ -179,7 +189,9 @@ class InvoiceService
         $invoice = Invoice::where('invoices.owner_user_id', getOwnerUserId())
             ->leftJoin('properties', 'invoices.property_id', '=', 'properties.id')
             ->leftJoin('property_units', 'property_units.id', '=', 'invoices.property_unit_id')
-            ->select(['invoices.*', 'properties.name as property_name', 'property_units.unit_name'])
+            ->leftJoin('tenants', 'invoices.tenant_id', '=', 'tenants.id')
+            ->leftJoin('users', 'tenants.user_id', '=', 'users.id')
+            ->select(['invoices.*', 'properties.name as property_name', 'property_units.unit_name', 'users.first_name as tenant_first_name', 'users.last_name as tenant_last_name', 'users.email as tenant_email'])
             ->orderByDesc('invoices.id')
             ->where('invoices.status', INVOICE_STATUS_PENDING);
         return datatables($invoice)
@@ -188,8 +200,11 @@ class InvoiceService
                         <p class="font-13">' . $invoice->name . '</p>';
             })
             ->addColumn('property', function ($invoice) {
+                $tenantName = trim(($invoice->tenant_first_name ?? '') . ' ' . ($invoice->tenant_last_name ?? ''));
+                $tenantHtml = $tenantName ? '<p class="font-12 mb-0">' . __('Tenant') . ': ' . $tenantName . '</p>' : '';
                 return '<h6>' . $invoice->property_name . '</h6>
-                        <p class="font-13">' . $invoice->unit_name . '</p>';
+                        <p class="font-13">' . $invoice->unit_name . '</p>
+                        ' . $tenantHtml;
             })
             ->addColumn('due_date', function ($item) {
                 $html = $item->due_date;
@@ -237,8 +252,12 @@ class InvoiceService
         $invoice = Invoice::query()
             ->join('orders', 'invoices.order_id', '=', 'orders.id')
             ->join('gateways', 'orders.gateway_id', '=', 'gateways.id')
+            ->leftJoin('properties', 'invoices.property_id', '=', 'properties.id')
+            ->leftJoin('property_units', 'property_units.id', '=', 'invoices.property_unit_id')
+            ->leftJoin('tenants', 'invoices.tenant_id', '=', 'tenants.id')
+            ->leftJoin('users', 'tenants.user_id', '=', 'users.id')
             ->join('file_managers', ['orders.deposit_slip_id' => 'file_managers.id', 'file_managers.origin_type' => (DB::raw("'App\\\Models\\\Order'"))])
-            ->select(['invoices.*', 'gateways.title as gatewayTitle', 'gateways.slug as gatewaySlug', 'file_managers.file_name', 'file_managers.folder_name'])
+            ->select(['invoices.*', 'gateways.title as gatewayTitle', 'gateways.slug as gatewaySlug', 'file_managers.file_name', 'file_managers.folder_name', 'properties.name as property_name', 'property_units.unit_name', 'users.first_name as tenant_first_name', 'users.last_name as tenant_last_name', 'users.email as tenant_email'])
             ->where('gateways.slug', 'bank')
             ->where('invoices.owner_user_id', getOwnerUserId())
             ->orderByDesc('invoices.id')
@@ -249,8 +268,11 @@ class InvoiceService
                         <p class="font-13">' . $invoice->name . '</p>';
             })
             ->addColumn('property', function ($invoice) {
-                return '<h6>' . @$invoice->property->name . '</h6>
-                        <p class="font-13">' . @$invoice->propertyUnit->unit_name . '</p>';
+                $tenantName = trim(($invoice->tenant_first_name ?? '') . ' ' . ($invoice->tenant_last_name ?? ''));
+                $tenantHtml = $tenantName ? '<p class="font-12 mb-0">' . __('Tenant') . ': ' . $tenantName . '</p>' : '';
+                return '<h6>' . $invoice->property_name . '</h6>
+                        <p class="font-13">' . $invoice->unit_name . '</p>
+                        ' . $tenantHtml;
             })
             ->addColumn('due_date', function ($item) {
                 return $item->due_date;
