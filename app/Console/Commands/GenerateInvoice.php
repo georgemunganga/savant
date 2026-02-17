@@ -39,7 +39,11 @@ class GenerateInvoice extends Command
             ->where('status', ACTIVE)
             ->get();
         foreach ($invoiceRecurringSettings as $invoiceRecurring) {
-            $tenant = Tenant::where('unit_id', $invoiceRecurring->property_unit_id)->where('status', TENANT_STATUS_ACTIVE)->first();
+            $tenant = Tenant::query()
+                ->where('id', $invoiceRecurring->tenant_id)
+                ->where('owner_user_id', $invoiceRecurring->owner_user_id)
+                ->where('status', TENANT_STATUS_ACTIVE)
+                ->first();
             if (!is_null($tenant)) {
                 if ($invoiceRecurring->recurring_type == INVOICE_RECURRING_TYPE_MONTHLY) {
                     $invoiceExist = Invoice::query()

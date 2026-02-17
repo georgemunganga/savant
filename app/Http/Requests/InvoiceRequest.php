@@ -29,7 +29,7 @@ class InvoiceRequest extends FormRequest
     {
         return [
             'name' => 'required',
-            'tenant_id' => 'nullable|integer',
+            'tenant_id' => 'required|integer',
             'property_id' => 'required',
             'property_unit_id' => 'required',
             'due_date' => 'required',

@@ -16,6 +16,7 @@ use App\Models\TenantUnitAssignment;
 use App\Services\SmsMail\MailService;
 use App\Traits\ResponseTrait;
 use Exception;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class InvoiceService
@@ -357,43 +358,43 @@ class InvoiceService
     {
         DB::beginTransaction();
         try {
-            $tenant = null;
-            if ($request->filled('tenant_id')) {
-                $tenant = Tenant::query()
-                    ->where('owner_user_id', getOwnerUserId())
-                    ->where('id', $request->tenant_id)
-                    ->whereIn('status', [TENANT_STATUS_ACTIVE, TENANT_STATUS_DRAFT])
-                    ->first();
-
-                if (!$tenant) {
-                    throw new Exception(__('Tenant Not Found'));
-                }
-
-                $assignedToUnit = TenantUnitAssignment::query()
-                    ->where('tenant_id', $tenant->id)
-                    ->where('property_id', $request->property_id)
-                    ->where('unit_id', $request->property_unit_id)
-                    ->exists();
-
-                if (!$assignedToUnit && ((int) $tenant->property_id !== (int) $request->property_id || (int) $tenant->unit_id !== (int) $request->property_unit_id)) {
-                    throw new Exception(__('Tenant is not assigned to the selected unit'));
-                }
-            }
-
-            if (!$tenant) {
-                $tenant = Tenant::where('owner_user_id', getOwnerUserId())->where('unit_id', $request->property_unit_id)->whereIn('status', [TENANT_STATUS_ACTIVE, TENANT_STATUS_DRAFT])->first();
-            }
+            $tenant = Tenant::query()
+                ->where('owner_user_id', getOwnerUserId())
+                ->where('id', $request->tenant_id)
+                ->whereIn('status', [TENANT_STATUS_ACTIVE, TENANT_STATUS_DRAFT])
+                ->first();
 
             if (!$tenant) {
                 throw new Exception(__('Tenant Not Found'));
             }
+
+            $assignedToUnit = TenantUnitAssignment::query()
+                ->where('tenant_id', $tenant->id)
+                ->where('property_id', $request->property_id)
+                ->where('unit_id', $request->property_unit_id)
+                ->exists();
+
+            if (
+                !$assignedToUnit &&
+                ((int) $tenant->property_id !== (int) $request->property_id || (int) $tenant->unit_id !== (int) $request->property_unit_id)
+            ) {
+                throw new Exception(__('Tenant is not assigned to the selected unit'));
+            }
+
+            $billingDate = Carbon::parse($request->due_date);
+            $expectedMonth = month($billingDate->format('n'));
+            if (strcasecmp((string) $request->month, (string) $expectedMonth) !== 0) {
+                throw new Exception(__('Selected month does not match the due date month'));
+            }
+
             $id = $request->get('id', '');
             $invoiceExist = Invoice::query()
+                ->where('tenant_id', $tenant->id)
                 ->where('property_id', $request->property_id)
                 ->where('property_unit_id', $request->property_unit_id)
                 ->where('owner_user_id', getOwnerUserId())
                 ->where('month', $request->month)
-                ->whereYear('created_at', '=', date('Y'))
+                ->whereYear('due_date', '=', $billingDate->year)
                 ->where(function ($q) use ($id) {
                     if ($id != '') {
                         $q->whereNot('id', $id);
