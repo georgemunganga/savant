@@ -49,6 +49,22 @@
         });
     }
 
+    function unitLabel(unit) {
+        if (!unit) {
+            return "";
+        }
+
+        const details = [];
+        if (unit.occupancy_label) {
+            details.push(unit.occupancy_label);
+        }
+        if (unit.availability_label) {
+            details.push(unit.availability_label);
+        }
+
+        return details.length ? `${unit.name} (${details.join(" · ")})` : unit.name;
+    }
+
     function getTenantAssignedUnitIds(tenantId, propertyId) {
         return tenantAssignments
             .filter(function (item) {
@@ -133,7 +149,8 @@
             if (selectedUnitIds.has(String(unit.id))) {
                 return;
             }
-            options.push(`<option value="${unit.id}">${unit.name}</option>`);
+            const isDisabled = unit.is_available_for_assignment === false;
+            options.push(`<option value="${unit.id}" ${isDisabled ? 'disabled' : ''}>${unitLabel(unit)}</option>`);
         });
         unitDropdown.innerHTML = options.join("");
     }
@@ -149,7 +166,7 @@
 
         badgesWrap.innerHTML = unitIds.map(function (unitId) {
             const unit = getUnitById(unitId);
-            const name = unit ? unit.name : `Unit ${unitId}`;
+            const name = unit ? unitLabel(unit) : `Unit ${unitId}`;
             return `<span class="badge bg-primary">
                 ${name}
                 <button type="button" class="btn-close btn-close-white ms-2 remove-unit-badge" data-unit-id="${unitId}" style="font-size:10px;"></button>

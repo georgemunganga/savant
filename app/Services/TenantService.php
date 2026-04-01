@@ -17,10 +17,17 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class TenantService
 {
     use ResponseTrait;
+
+    public function __construct(
+        private readonly UnitHistoryService $unitHistoryService = new UnitHistoryService()
+    ) {
+    }
 
     public function getAll()
     {
@@ -31,6 +38,7 @@ class TenantService
             ->leftJoin(DB::raw('(select tenant_id, SUM(amount) as due from invoices where status = 0 AND deleted_at IS NULL group By tenant_id) as inv'), ['inv.tenant_id' => 'tenants.id'])
             ->leftJoin(DB::raw('(select tenant_id, MAX(updated_at) as last_payment from invoices where status = 1 AND deleted_at IS NULL group By tenant_id) as inv_last'), ['inv_last.tenant_id' => 'tenants.id'])
             ->whereNull('users.deleted_at')
+            ->where('tenants.status', '!=', TENANT_STATUS_CLOSE)
             ->select(['tenants.*', 'inv.due', 'inv_last.last_payment', 'users.first_name', 'users.last_name', 'users.status as userStatus', 'users.contact_number', 'users.email', 'property_units.unit_name', 'properties.name as property_name'])
             ->where('tenants.owner_user_id', getOwnerUserId())
             ->with(['unitAssignments.unit', 'unitAssignments.property'])
@@ -83,7 +91,8 @@ class TenantService
                 'assignment_property_summary.property_names as assignment_property_names',
                 'assignment_unit_summary.unit_names as assignment_unit_names',
             ])
-            ->where('tenants.owner_user_id', getOwnerUserId());
+            ->where('tenants.owner_user_id', getOwnerUserId())
+            ->where('tenants.status', '!=', TENANT_STATUS_CLOSE);
 
         return datatables($tenants)
             ->addIndexColumn()
@@ -133,7 +142,7 @@ class TenantService
                     } elseif ($tenant->status == TENANT_STATUS_DRAFT) {
                         $html = ' <div class="status-btn status-btn-blue font-13 radius-4">' . __('Draft') . '</div>';
                     } elseif ($tenant->status == TENANT_STATUS_CLOSE) {
-                        $html = ' <div class="status-btn status-btn-red font-13 radius-4">' . __('Close') . '</div>';
+                        $html = ' <div class="status-btn status-btn-red font-13 radius-4">' . __('Archived') . '</div>';
                     }
                 }
                 return $html;
@@ -177,7 +186,8 @@ class TenantService
                 'assignment_property_summary.property_names as assignment_property_names',
                 'assignment_unit_summary.unit_names as assignment_unit_names',
             ])
-            ->where('tenants.owner_user_id', getOwnerUserId());
+            ->where('tenants.owner_user_id', getOwnerUserId())
+            ->where('tenants.status', TENANT_STATUS_CLOSE);
 
         return datatables($tenants)
             ->addIndexColumn()
@@ -212,7 +222,7 @@ class TenantService
                     } elseif ($tenant->status == TENANT_STATUS_DRAFT) {
                         $html = ' <div class="status-btn status-btn-blue font-13 radius-4">' . __('Draft') . '</div>';
                     } elseif ($tenant->status == TENANT_STATUS_CLOSE) {
-                        $html = ' <div class="status-btn status-btn-red font-13 radius-4">' . __('Close') . '</div>';
+                        $html = ' <div class="status-btn status-btn-red font-13 radius-4">' . __('Archived') . '</div>';
                     }
                 }
                 return $html;
@@ -268,7 +278,14 @@ class TenantService
                 },
             ])
             ->select('tenant_unit_assignments.*')
-            ->orderByDesc('tenant_unit_assignments.id')
+            ->when($this->unitHistoryService->supportsTemporalAssignments(), function ($query) {
+                $query
+                    ->orderByDesc('tenant_unit_assignments.is_current')
+                    ->orderByDesc('tenant_unit_assignments.assigned_at')
+                    ->orderByDesc('tenant_unit_assignments.id');
+            }, function ($query) {
+                $query->orderByDesc('tenant_unit_assignments.id');
+            })
             ->get();
 
         if ($assignments->isNotEmpty()) {
@@ -499,7 +516,12 @@ class TenantService
         try {
             $tenant = Tenant::where('owner_user_id', getOwnerUserId())->findOrFail($request->id);
             $this->ensureUnitOccupancyLimit((int) $request->property_id, (int) $request->unit_id, (int) $tenant->id);
-            $this->storeTenantUnitAssignment($tenant, (int) $request->property_id, (int) $request->unit_id);
+            $this->unitHistoryService->syncPrimaryAssignment(
+                $tenant,
+                (int) $request->property_id,
+                (int) $request->unit_id,
+                auth()->id()
+            );
             $tenant->property_id = $request->property_id;
             $tenant->unit_id = $request->unit_id;
             $tenant->lease_start_date = $request->lease_start_date;
@@ -530,6 +552,7 @@ class TenantService
         DB::beginTransaction();
         try {
             $tenant = Tenant::where('owner_user_id', getOwnerUserId())->findOrFail($request->id);
+            $this->ensureTenantPrimaryUnitReadyForActivation($tenant);
             $this->ensureTenantAllAssignmentsWithinLimits((int) $tenant->id);
             $tenant->status = TENANT_STATUS_ACTIVE;
             $tenant->save();
@@ -583,9 +606,14 @@ class TenantService
                 ->map(fn($id) => (int) $id)
                 ->toArray();
 
+            $ownerUnitColumns = ['id', 'property_id', 'max_occupancy', 'unit_name'];
+            if (Schema::hasColumn('property_units', 'manual_availability_status')) {
+                $ownerUnitColumns[] = 'manual_availability_status';
+            }
+
             $ownerUnits = PropertyUnit::query()
                 ->whereIn('property_id', $ownerPropertyIds)
-                ->select(['id', 'property_id', 'max_occupancy', 'unit_name'])
+                ->select($ownerUnitColumns)
                 ->get()
                 ->keyBy('id');
 
@@ -601,6 +629,9 @@ class TenantService
                 ->whereNull('users.deleted_at')
                 ->where('tenants.owner_user_id', getOwnerUserId())
                 ->where('tenants.status', TENANT_STATUS_ACTIVE)
+                ->when($this->unitHistoryService->supportsTemporalAssignments(), function ($query) {
+                    $query->where('tenant_unit_assignments.is_current', true);
+                })
                 ->selectRaw('tenant_unit_assignments.unit_id, COUNT(DISTINCT tenant_unit_assignments.tenant_id) as total')
                 ->groupBy('tenant_unit_assignments.unit_id')
                 ->pluck('total', 'tenant_unit_assignments.unit_id')
@@ -625,9 +656,18 @@ class TenantService
                 if (!$unit || (int) $unit->property_id !== $propertyId) {
                     throw new Exception(__('Invalid unit selected'));
                 }
+                if (in_array(($unit->manual_availability_status ?? null), [
+                    PropertyUnit::MANUAL_AVAILABILITY_ON_HOLD,
+                    PropertyUnit::MANUAL_AVAILABILITY_OFF_MARKET,
+                ], true)) {
+                    throw new Exception(__('This unit is not currently open for assignment.'));
+                }
                 $assignmentExists = TenantUnitAssignment::query()
                     ->where('tenant_id', $tenantId)
                     ->where('unit_id', $unitId)
+                    ->when($this->unitHistoryService->supportsTemporalAssignments(), function ($query) {
+                        $query->where('is_current', true);
+                    })
                     ->exists();
                 if ($assignmentExists) {
                     $tenant->property_id = $propertyId;
@@ -643,11 +683,13 @@ class TenantService
                     $activeUnitCounts[$unitId] = $nextCount;
                 }
 
-                TenantUnitAssignment::create([
-                    'tenant_id' => $tenantId,
-                    'property_id' => $propertyId,
-                    'unit_id' => $unitId,
-                ]);
+                $this->unitHistoryService->beginAssignment(
+                    $tenant,
+                    $propertyId,
+                    $unitId,
+                    auth()->id(),
+                    $tenant->lease_start_date
+                );
 
                 $tenant->property_id = $propertyId;
                 $tenant->unit_id = $unitId;
@@ -664,16 +706,35 @@ class TenantService
 
     private function ensureUnitOccupancyLimit(int $propertyId, int $unitId, ?int $excludeTenantId = null): void
     {
+        $selectColumns = [
+            'property_units.id',
+            'property_units.unit_name',
+            'property_units.max_occupancy',
+        ];
+
+        if (Schema::hasColumn('property_units', 'manual_availability_status')) {
+            $selectColumns[] = 'property_units.manual_availability_status';
+        }
+
         $unit = PropertyUnit::query()
             ->join('properties', 'property_units.property_id', '=', 'properties.id')
             ->where('properties.owner_user_id', getOwnerUserId())
             ->where('property_units.id', $unitId)
             ->where('property_units.property_id', $propertyId)
-            ->select(['property_units.id', 'property_units.unit_name', 'property_units.max_occupancy'])
+            ->select($selectColumns)
             ->first();
 
         if (!$unit) {
             throw new Exception(__('Invalid unit selected'));
+        }
+        if (
+            isset($unit->manual_availability_status)
+            && in_array($unit->manual_availability_status, [
+                PropertyUnit::MANUAL_AVAILABILITY_ON_HOLD,
+                PropertyUnit::MANUAL_AVAILABILITY_OFF_MARKET,
+            ], true)
+        ) {
+            throw new Exception(__('This unit is not currently open for assignment.'));
         }
         if (is_null($unit->max_occupancy)) {
             return;
@@ -686,6 +747,9 @@ class TenantService
             ->where('tenants.owner_user_id', getOwnerUserId())
             ->where('tenants.status', TENANT_STATUS_ACTIVE)
             ->where('tenant_unit_assignments.unit_id', $unitId)
+            ->when($this->unitHistoryService->supportsTemporalAssignments(), function ($query) {
+                $query->where('tenant_unit_assignments.is_current', true);
+            })
             ->when(!is_null($excludeTenantId), function ($q) use ($excludeTenantId) {
                 $q->where('tenants.id', '!=', $excludeTenantId);
             })
@@ -696,19 +760,75 @@ class TenantService
         }
     }
 
-    private function storeTenantUnitAssignment(Tenant $tenant, int $propertyId, int $unitId): void
+    private function ensureTenantPrimaryUnitReadyForActivation(Tenant $tenant): void
     {
-        $exists = TenantUnitAssignment::query()
-            ->where('tenant_id', $tenant->id)
-            ->where('unit_id', $unitId)
-            ->exists();
+        if (is_null($tenant->property_id) || is_null($tenant->unit_id)) {
+            throw new Exception(__('Assign a property and unit before activating this tenant.'));
+        }
 
-        if (!$exists) {
-            TenantUnitAssignment::create([
-                'tenant_id' => $tenant->id,
-                'property_id' => $propertyId,
-                'unit_id' => $unitId,
-            ]);
+        $selectColumns = [
+            'property_units.id',
+            'property_units.unit_name',
+            'property_units.max_occupancy',
+        ];
+
+        if (Schema::hasColumn('property_units', 'manual_availability_status')) {
+            $selectColumns[] = 'property_units.manual_availability_status';
+        }
+
+        $unit = PropertyUnit::query()
+            ->join('properties', 'property_units.property_id', '=', 'properties.id')
+            ->where('properties.owner_user_id', getOwnerUserId())
+            ->where('property_units.id', $tenant->unit_id)
+            ->where('property_units.property_id', $tenant->property_id)
+            ->select($selectColumns)
+            ->first();
+
+        if (! $unit) {
+            throw new Exception(__('Invalid unit selected'));
+        }
+
+        if (
+            isset($unit->manual_availability_status)
+            && in_array($unit->manual_availability_status, [
+                PropertyUnit::MANUAL_AVAILABILITY_ON_HOLD,
+                PropertyUnit::MANUAL_AVAILABILITY_OFF_MARKET,
+            ], true)
+        ) {
+            throw new Exception(__('This unit is not currently open for assignment.'));
+        }
+
+        if (is_null($unit->max_occupancy)) {
+            return;
+        }
+
+        $activeTenantCount = TenantUnitAssignment::query()
+            ->join('tenants', 'tenant_unit_assignments.tenant_id', '=', 'tenants.id')
+            ->join('users', 'tenants.user_id', '=', 'users.id')
+            ->whereNull('users.deleted_at')
+            ->where('tenants.owner_user_id', getOwnerUserId())
+            ->where('tenants.status', TENANT_STATUS_ACTIVE)
+            ->where('tenant_unit_assignments.unit_id', $tenant->unit_id)
+            ->when($this->unitHistoryService->supportsTemporalAssignments(), function ($query) {
+                $query->where('tenant_unit_assignments.is_current', true);
+            })
+            ->count(DB::raw('DISTINCT tenants.id'));
+
+        if ($activeTenantCount >= (int) $unit->max_occupancy) {
+            throw new Exception(__('Unit occupancy limit reached for :unit', ['unit' => $unit->unit_name]));
+        }
+    }
+
+    private function revokeTenantAccess(User $user): void
+    {
+        $user->status = USER_STATUS_INACTIVE;
+        $user->remember_token = Str::random(60);
+        $user->save();
+
+        if (Schema::hasTable('oauth_access_tokens')) {
+            DB::table('oauth_access_tokens')
+                ->where('user_id', $user->id)
+                ->update(['revoked' => 1]);
         }
     }
 
@@ -719,6 +839,9 @@ class TenantService
             ->join('properties', 'property_units.property_id', '=', 'properties.id')
             ->where('tenant_unit_assignments.tenant_id', $tenantId)
             ->where('properties.owner_user_id', getOwnerUserId())
+            ->when($this->unitHistoryService->supportsTemporalAssignments(), function ($query) {
+                $query->where('tenant_unit_assignments.is_current', true);
+            })
             ->whereNotNull('property_units.max_occupancy')
             ->select(['tenant_unit_assignments.property_id', 'tenant_unit_assignments.unit_id'])
             ->get();
@@ -733,12 +856,22 @@ class TenantService
         DB::beginTransaction();
         try {
             $tenant = Tenant::where('owner_user_id', getOwnerUserId())->findOrFail($id);
+            $this->unitHistoryService->closeAllCurrentAssignmentsForTenant(
+                $tenant,
+                $request->close_reason,
+                $request->close_date,
+                auth()->id()
+            );
             $tenant->status = TENANT_STATUS_CLOSE;
             $tenant->close_refund_amount = $request->close_refund_amount;
             $tenant->close_charge = $request->close_charge;
             $tenant->close_date = $request->close_date;
             $tenant->close_reason = $request->close_reason;
+            $tenant->property_id = null;
+            $tenant->unit_id = null;
             $tenant->save();
+
+            $this->revokeTenantAccess($tenant->user);
 
             DB::commit();
             $message = __(UPDATED_SUCCESSFULLY);
@@ -755,6 +888,9 @@ class TenantService
         DB::beginTransaction();
         try {
             $tenant = Tenant::where('owner_user_id', getOwnerUserId())->findOrFail($request->tenant_id);
+            if ((int) $tenant->status !== TENANT_STATUS_DRAFT) {
+                throw new Exception(__('Only draft tenants can be deleted. Move out active tenants instead so their history is retained.'));
+            }
             if ($tenant->user->email != $request->email) {
                 throw new Exception(__('Tenant Not Found'));
             }

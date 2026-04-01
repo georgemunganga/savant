@@ -41,17 +41,19 @@
                                             @if ($tenant->status != TENANT_STATUS_CLOSE)
                                                 <button type="button" class="account-settings-menu-item red-color"
                                                     data-bs-toggle="modal" data-bs-target="#tenantCloseModal"
-                                                    title="{{ __('Close Tenant') }}">
+                                                    title="{{ __('Move Out Tenant') }}">
                                                     <span class="bg-red-transparent radius-4 overflow-hidden px-2 me-2"><i
-                                                            class="ri-delete-back-2-line"></i></span>{{ __('Close Tenant') }}
+                                                            class="ri-delete-back-2-line"></i></span>{{ __('Move Out Tenant') }}
                                                 </button>
                                             @endif
-                                            <button type="button" class="account-settings-menu-item red-color"
-                                                data-bs-toggle="modal" data-bs-target="#tenantDeleteModal"
-                                                title="{{ __('Delete Tenant') }}">
-                                                <span class="bg-red-transparent radius-4 overflow-hidden px-2 me-2"><i
-                                                        class="ri-delete-bin-2-line"></i></span>{{ __('Delete Tenant') }}
-                                            </button>
+                                            @if ($tenant->status == TENANT_STATUS_DRAFT)
+                                                <button type="button" class="account-settings-menu-item red-color"
+                                                    data-bs-toggle="modal" data-bs-target="#tenantDeleteModal"
+                                                    title="{{ __('Delete Draft Tenant') }}">
+                                                    <span class="bg-red-transparent radius-4 overflow-hidden px-2 me-2"><i
+                                                            class="ri-delete-bin-2-line"></i></span>{{ __('Delete Draft Tenant') }}
+                                                </button>
+                                            @endif
                                         </div>
                                     </div>
                                 </div>
@@ -296,12 +298,12 @@
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h4 class="modal-title" id="tenantCloseModalLabel">{{ __('Tenant Close') }}</h4>
+                    <h4 class="modal-title" id="tenantCloseModalLabel">{{ __('Move Out Tenant') }}</h4>
                     <div class="account-settings-menu-item "
-                        title="{{ __('This Tenant have') }} {{ $paymentDueInvoiceCount }} {{ __('Invoice Due') }}">
-                        {{ __('This Tenant have') }} <a href=""><span
+                        title="{{ __('This tenant has') }} {{ $paymentDueInvoiceCount }} {{ __('invoice due') }}">
+                        {{ __('This tenant has') }} <a href=""><span
                                 class="bg-red-transparent red-color radius-4 overflow-hidden px-2 mx-2">{{ $paymentDueInvoiceCount }}</span></a>
-                        {{ __('Due Invoice') }}
+                        {{ __('due invoice') }}
                     </div>
                 </div>
                 <form class="ajax" action="{{ route('owner.tenant.close.history.store', $tenant->id) }}"
@@ -376,14 +378,14 @@
                                 </div>
                                 <div class="col-md-6 mb-25">
                                     <label
-                                        class="label-text-title color-heading font-medium mb-2">{{ __('Closing Charge') }}</label>
+                                        class="label-text-title color-heading font-medium mb-2">{{ __('Move-Out Charge') }}</label>
                                     <input type="number" step="any" value="0" min="0"
                                         name="close_charge" class="form-control"
-                                        placeholder="{{ __('Closing Charge') }}">
+                                        placeholder="{{ __('Move-Out Charge') }}">
                                 </div>
                                 <div class="col-md-6 mb-25">
                                     <label
-                                        class="label-text-title color-heading font-medium mb-2">{{ __('Closing Date') }}</label>
+                                        class="label-text-title color-heading font-medium mb-2">{{ __('Move-Out Date') }}</label>
                                     <div class="custom-datepicker">
                                         <div class="custom-datepicker-inner position-relative">
                                             <input type="text" class="datepicker form-control" autocomplete="off"
@@ -405,7 +407,7 @@
                                 </div>
                                 <div class="col-md-12 mb-25">
                                     <label
-                                        class="label-text-title color-heading font-medium mb-2">{{ __('Closing Reason') }}</label>
+                                        class="label-text-title color-heading font-medium mb-2">{{ __('Move-Out Reason') }}</label>
                                     <textarea name="close_reason" id="close_reason" class="form-control" placeholder="{{ __('Reason') }}"></textarea>
                                 </div>
                             </div>
@@ -429,12 +431,12 @@
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h4 class="modal-title" id="tenantDeleteModalLabel">{{ __('Tenant Delete') }}</h4>
+                    <h4 class="modal-title" id="tenantDeleteModalLabel">{{ __('Delete Draft Tenant') }}</h4>
                     <div class="account-settings-menu-item "
-                        title="{{ __('This Tenant have') }} {{ $paymentDueInvoiceCount }} {{ __('Invoice Due') }}">
-                        {{ __('This Tenant have') }} <a href=""><span
+                        title="{{ __('Draft-only cleanup') }}">
+                        {{ __('Draft-only cleanup') }} <a href=""><span
                                 class="bg-red-transparent red-color radius-4 overflow-hidden px-2 mx-2">{{ $paymentDueInvoiceCount }}</span></a>
-                        {{ __('Due Invoice') }}
+                        {{ __('due invoice') }}
                     </div>
                 </div>
                 <form class="ajax" action="{{ route('owner.tenant.delete') }}" method="POST"
@@ -485,9 +487,9 @@
                             <div class="row">
                                 <div class="col-md-12 mb-25">
                                     <label
-                                        class="label-text-title color-heading font-medium mb-2">{{ __('Write your tenant\'s email which you want to delete') }}</label>
+                                        class="label-text-title color-heading font-medium mb-2">{{ __('Write your draft tenant\'s email to confirm deletion') }}</label>
                                     <input type="email" name="email" class="form-control"
-                                        placeholder="{{ __('Write your tenant\'s email which you want to delete') }}">
+                                        placeholder="{{ __('Write your draft tenant\'s email to confirm deletion') }}">
                                 </div>
                             </div>
                         </div>

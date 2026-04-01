@@ -1,6 +1,10 @@
 <form class="ajax" action="{{ route('owner.property.property-information.store') }}" method="post"
     data-handler="stepChange">
     @csrf
+    @php
+        $wholePublicOption = @$property->wholePublicOption;
+        $publicSections = array_filter(explode(',', (string) @$property->public_home_sections));
+    @endphp
     <input type="text" name="property_id" class="d-none" value="{{ @$property->id }}">
     <input type="text" name="property_type" class="d-none" id="property_type"
         value="{{ @$property->property_type ?? 1 }}">
@@ -121,6 +125,108 @@
                             <label
                                 class="label-text-title color-heading font-medium mb-2">{{ __('Description') }}</label>
                             <textarea class="form-control" name="lease_description" placeholder="{{ __('Description') }}">{{ @$property->property_type ? ($property->property_type == 2 ? $property->description : '') : '' }}</textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="border-top pt-25 mt-10">
+                <h5 class="mb-20">{{ __('Public Website') }}</h5>
+                <div class="row">
+                    <div class="col-md-4 mb-25">
+                        <input type="hidden" name="is_public" value="0">
+                        <div class="form-group custom-checkbox">
+                            <input type="checkbox" id="is_public" name="is_public" value="1"
+                                {{ (int) @$property->is_public === 1 ? 'checked' : '' }}>
+                            <label class="fw-normal" for="is_public">{{ __('Publish on public website') }}</label>
+                        </div>
+                        <small class="text-muted d-block mt-2">
+                            The website link, display order, and default public option are generated automatically.
+                        </small>
+                    </div>
+                    <div class="col-md-4 mb-25">
+                        <label class="label-text-title color-heading font-medium mb-2">Public Category</label>
+                        <select class="form-control" name="public_category">
+                            <option value="">--Select Type--</option>
+                            <option value="apartment" {{ @$property->public_category === 'apartment' ? 'selected' : '' }}>
+                                Apartments
+                            </option>
+                            <option value="boarding" {{ @$property->public_category === 'boarding' ? 'selected' : '' }}>
+                                Boarding
+                            </option>
+                        </select>
+                        <small class="text-muted d-block mt-2">
+                            Choose how this property should appear on the website.
+                        </small>
+                    </div>
+                    <div class="col-md-4 mb-25">
+                        <label class="label-text-title color-heading font-medium mb-2">Public Link</label>
+                        <input type="text" class="form-control"
+                            value="{{ @$property->public_slug ?: 'Generated automatically after save' }}"
+                            readonly>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-12 mb-25">
+                        <label class="label-text-title color-heading font-medium mb-2">Public Summary</label>
+                        <textarea class="form-control" name="public_summary"
+                            placeholder="Short public summary">{{ @$property->public_summary }}</textarea>
+                        <small class="text-muted d-block mt-2">
+                            Optional. Leave blank and the property description will be used on the website.
+                        </small>
+                    </div>
+                </div>
+
+                <div class="border-top pt-25 mt-10">
+                    <div class="row">
+                        <div class="col-md-12 mb-20">
+                            <input type="hidden" name="enable_whole_property_option" value="0">
+                            <div class="form-group custom-checkbox">
+                                <input type="checkbox" id="enable_whole_property_option"
+                                    name="enable_whole_property_option" value="1"
+                                    {{ $wholePublicOption ? 'checked' : '' }}>
+                                <label class="fw-normal" for="enable_whole_property_option">
+                                    Enable property-level public option
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-3 mb-25">
+                            <label class="label-text-title color-heading font-medium mb-2">Rental Kind <span class="text-danger">*</span></label>
+                            <select class="form-control" name="whole_property_option[rental_kind]">
+                                @foreach (['whole_property' => 'Whole Property', 'whole_unit' => 'Whole Unit', 'private_room' => 'Private Room', 'shared_space' => 'Shared Space'] as $value => $label)
+                                    <option value="{{ $value }}"
+                                        {{ @$wholePublicOption->rental_kind === $value ? 'selected' : ($value === 'whole_property' ? 'selected' : '') }}>
+                                        {{ $label }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-2 mb-25">
+                            <label class="label-text-title color-heading font-medium mb-2">Monthly Rate <span class="text-danger">*</span></label>
+                            <input type="number" min="0" step="any" class="form-control"
+                                name="whole_property_option[monthly_rate]"
+                                value="{{ @$wholePublicOption->monthly_rate }}">
+                        </div>
+                        <div class="col-md-2 mb-25">
+                            <label class="label-text-title color-heading font-medium mb-2">Nightly Rate <span class="text-danger">*</span></label>
+                            <input type="number" min="0" step="any" class="form-control"
+                                name="whole_property_option[nightly_rate]"
+                                value="{{ @$wholePublicOption->nightly_rate }}">
+                        </div>
+                        <div class="col-md-2 mb-25">
+                            <label class="label-text-title color-heading font-medium mb-2">Max Guests</label>
+                            <input type="number" min="1" class="form-control"
+                                name="whole_property_option[max_guests]"
+                                value="{{ @$wholePublicOption->max_guests }}">
+                        </div>
+                        <div class="col-md-5 mb-25 d-flex align-items-end">
+                            <small class="text-muted">
+                                The website will automatically choose the default property option based on the lowest rate.
+                            </small>
                         </div>
                     </div>
                 </div>

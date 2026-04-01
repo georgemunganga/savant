@@ -125,11 +125,10 @@
                                                                 <td>
                                                                     <h6 class="theme-text-color">{{ $property->name }}
                                                                     </h6>
-                                                                    <p class="font-13">{{ $property->address }}</p>
+                                                                    <p class="font-13">{{ $property->address ?: __('N/A') }}</p>
                                                                 </td>
                                                                 <td>{{ $property->number_of_unit }}</td>
-                                                                <td>{{ $property->number_of_unit - $property->occupied_unit }}
-                                                                </td>
+                                                                <td>{{ $property->available_unit }}</td>
                                                                 <td>{{ $property->total_tenant }}</td>
                                                                 <td>{{ $property->total_maintainers }}</td>
                                                             </tr>

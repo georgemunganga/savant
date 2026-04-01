@@ -222,17 +222,7 @@ class ReportService
 
     public function occupancy()
     {
-        $occupiedSummarySql = "(select tenant_unit_assignments.property_id, COUNT(DISTINCT tenant_unit_assignments.unit_id) as occupied_unit
-            from tenant_unit_assignments
-            join tenants on tenants.id = tenant_unit_assignments.tenant_id
-            join users on users.id = tenants.user_id
-            where users.deleted_at IS NULL and tenants.status = " . TENANT_STATUS_ACTIVE . " and tenants.owner_user_id = " . getOwnerUserId() . "
-            group by tenant_unit_assignments.property_id) as occupied_summary";
-
-        $properties = Property::query()
-            ->leftJoin(DB::raw($occupiedSummarySql), 'occupied_summary.property_id', '=', 'properties.id')
-            ->selectRaw('GREATEST(properties.number_of_unit - COALESCE(occupied_summary.occupied_unit, 0), 0) as available_unit, properties.*')
-            ->where('properties.owner_user_id', getOwnerUserId());
+        $properties = (new PropertyService())->getAll();
 
         return datatables($properties)
             ->addIndexColumn()
@@ -240,7 +230,7 @@ class ReportService
                 return  $property->name;
             })
             ->addColumn('address', function ($property) {
-                return  $property->propertyDetail?->address;
+                return  $property->address ?: $property->propertyDetail?->address;
             })
             ->addColumn('unit', function ($property) {
                 return  $property->number_of_unit;
@@ -253,7 +243,7 @@ class ReportService
                     return '0%';
                 }
                 $turnOver = ($property->available_unit / $property->number_of_unit) * 100;
-                return $turnOver . '%';
+                return round($turnOver, 2) . '%';
             })
             ->rawColumns(['property_name', 'turn_over'])
             ->make(true);
@@ -355,7 +345,7 @@ class ReportService
                 } elseif ($tenant->status == TENANT_STATUS_DRAFT) {
                     $html = ' <div class="status-btn status-btn-blue font-13 radius-4">' . __('Draft') . '</div>';
                 } elseif ($tenant->status == TENANT_STATUS_CLOSE) {
-                    $html = ' <div class="status-btn status-btn-red font-13 radius-4">' . __('Close') . '</div>';
+                    $html = ' <div class="status-btn status-btn-red font-13 radius-4">' . __('Archived') . '</div>';
                 }
                 return $html;
             })

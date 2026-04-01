@@ -45,7 +45,7 @@ class CheckoutRequest extends FormRequest
 
     public function failedValidation(Validator $validator)
     {
-        if ($this->header('accept') == "application/json") {
+        if ($this->expectsJson()) {
             $error = '';
             if ($validator->fails()) {
                 $error = $validator->errors()->first();

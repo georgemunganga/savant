@@ -41,7 +41,9 @@
                                                             <th data-priority="1">{{ __('Name') }}</th>
                                                             <th>{{ __('Image') }}</th>
                                                             <th>{{ __('Property') }}</th>
-                                                            <th>{{ __('Tenants') }}</th>
+                                                            <th>{{ __('Occupancy') }}</th>
+                                                            <th>{{ __('Availability') }}</th>
+                                                            <th>{{ __('Last Vacated') }}</th>
                                                             <th class="text-center">{{ __('Action') }}</th>
                                                         </tr>
                                                     </thead>
@@ -52,23 +54,53 @@
                                                                 <td>{{ $unit->unit_name }}</td>
                                                                 <td>
                                                                     <img class="rounded-circle avatar-md tbl-user-image"
-                                                                        src="{{ assetUrl($unit->folder_name . '/' . $unit->file_name) }}">
+                                                                        src="{{ $unit->folder_name && $unit->file_name ? assetUrl($unit->folder_name . '/' . $unit->file_name) : asset('assets/images/no-image.jpg') }}">
                                                                 </td>
                                                                 <td>{{ $unit->property_name }}</td>
                                                                 <td>
+                                                                    <span
+                                                                        class="badge {{ $unit->occupancy_state === 'full' ? 'bg-danger' : ($unit->occupancy_state === 'partially_occupied' ? 'bg-warning text-dark' : 'bg-success') }}">
+                                                                        {{ $unit->occupancy_label }}
+                                                                    </span>
                                                                     @if (($unit->active_tenant_count ?? 0) > 0)
-                                                                        <span class="text-success">
-                                                                            {{ $unit->active_tenant_count }} {{ __('tenant(s)') }}
-                                                                        </span>
                                                                         <div class="font-13 mt-1">
                                                                             {{ $unit->active_tenant_names }}
                                                                         </div>
-                                                                    @else
-                                                                        <span class="text-danger">{{ __('No Active Tenant') }}</span>
                                                                     @endif
                                                                 </td>
+                                                                <td>
+                                                                    <span
+                                                                        class="badge {{ ($unit->manual_availability_status ?? 'active') === 'off_market' ? 'bg-secondary' : ((($unit->manual_availability_status ?? 'active') === 'on_hold') ? 'bg-dark' : (($unit->is_available_for_assignment ?? false) ? 'bg-success' : 'bg-danger')) }}">
+                                                                        {{ $unit->availability_label }}
+                                                                    </span>
+                                                                    <div class="font-13 mt-1">
+                                                                        {{ __('Slots') }}: {{ $unit->available_slots ?? 0 }}
+                                                                    </div>
+                                                                </td>
+                                                                <td>
+                                                                    {{ $unit->available_since ? \Carbon\Carbon::parse($unit->available_since)->format('d M Y H:i') : __('N/A') }}
+                                                                </td>
                                                                 <td class="text-center">
-                                                                    @if (($unit->active_tenant_count ?? 0) < 1)
+                                                                    <a class="p-1 tbl-action-btn"
+                                                                        href="{{ route('owner.property.unit.details', $unit->id) }}"
+                                                                        title="{{ __('View Unit History') }}">
+                                                                        <span class="iconify"
+                                                                            data-icon="mdi:history"></span>
+                                                                    </a>
+                                                                    @if (($unit->active_tenant_count ?? 0) == 1 && !is_null($unit->first_tenant_id))
+                                                                        <a class="p-1 tbl-action-btn"
+                                                                            href="{{ route('owner.tenant.details', [$unit->first_tenant_id, 'tab' => 'profile']) }}"
+                                                                            title="{{ __('View Tenant') }}">
+                                                                            <span class="iconify" data-icon="carbon:view-filled"></span>
+                                                                        </a>
+                                                                    @elseif(($unit->active_tenant_count ?? 0) > 1)
+                                                                        <a class="p-1 tbl-action-btn"
+                                                                            href="{{ route('owner.tenant.index', ['type' => 'all']) }}"
+                                                                            title="{{ __('View Tenants') }}">
+                                                                            <span class="iconify" data-icon="carbon:view-filled"></span>
+                                                                        </a>
+                                                                    @endif
+                                                                    @if ($unit->can_delete_unit)
                                                                         <button class="p-1 tbl-action-btn deleteItem"
                                                                             data-formid="delete_row_form_{{ $unit->id }}">
                                                                             <span class="iconify"
@@ -82,16 +114,6 @@
                                                                             <input type="hidden" name="_token"
                                                                                 value="{{ csrf_token() }}">
                                                                         </form>
-                                                                    @elseif(($unit->active_tenant_count ?? 0) == 1 && !is_null($unit->first_tenant_id))
-                                                                        <a href="{{ route('owner.tenant.details', [$unit->first_tenant_id, 'tab' => 'profile']) }}"
-                                                                            title="{{ __('View Tenant') }}">
-                                                                            <span class="iconify" data-icon="carbon:view-filled"></span>
-                                                                        </a>
-                                                                    @else
-                                                                        <a href="{{ route('owner.tenant.index', ['type' => 'all']) }}"
-                                                                            title="{{ __('View Tenants') }}">
-                                                                            <span class="iconify" data-icon="carbon:view-filled"></span>
-                                                                        </a>
                                                                     @endif
                                                                 </td>
                                                             </tr>

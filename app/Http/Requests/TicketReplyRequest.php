@@ -28,13 +28,14 @@ class TicketReplyRequest extends FormRequest
     public function rules()
     {
         return [
-            'reply' => 'required'
+            'ticket_id' => 'required|integer',
+            'reply' => 'required',
         ];
     }
 
     public function failedValidation(Validator $validator)
     {
-        if ($this->header('accept') == "application/json") {
+        if ($this->expectsJson()) {
             $error = '';
             if ($validator->fails()) {
                 $error = $validator->errors()->first();

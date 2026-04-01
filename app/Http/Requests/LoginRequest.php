@@ -28,10 +28,12 @@ class LoginRequest extends FormRequest
     public function rules()
     {
         $user = User::where('role', USER_ROLE_ADMIN)->where('email', $this->email)->first();
+        $captchaRule = $this->expectsJson() || isset($user) ? 'nullable' : [new ReCaptcha];
+
         return [
             'email' => 'required',
             'password' => 'required|string',
-            'g-recaptcha-response' => isset($user) ? 'nullable' : [new ReCaptcha]
+            'g-recaptcha-response' => $captchaRule,
         ];
     }
 
@@ -50,7 +52,7 @@ class LoginRequest extends FormRequest
 
     public function failedValidation(Validator $validator)
     {
-        if ($this->header('accept') == "application/json") {
+        if ($this->expectsJson()) {
             $error = '';
             if ($validator->fails()) {
                 $error = $validator->errors()->first();

@@ -16,6 +16,7 @@ use App\Services\PropertyService;
 use App\Services\TenantService;
 use App\Traits\ResponseTrait;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class TenantController extends Controller
 {
@@ -34,7 +35,7 @@ class TenantController extends Controller
     {
         $data['navTenantMMShowClass'] = 'mm-show';
         if ($request->type == 'history') {
-            $data['pageTitle'] = __('Tenants History');
+            $data['pageTitle'] = __('Archived Tenants');
             $data['subNavTenantHistoryMMActiveClass'] = 'mm-active';
             $data['subNavTenantHistoryActiveClass'] = 'active';
             if ($request->ajax()) {
@@ -99,18 +100,7 @@ class TenantController extends Controller
             ->orderBy('name')
             ->get();
 
-        $data['units'] = PropertyUnit::query()
-            ->join('properties', 'property_units.property_id', '=', 'properties.id')
-            ->where('properties.owner_user_id', getOwnerUserId())
-            ->select([
-                'property_units.id',
-                'property_units.property_id',
-                'property_units.unit_name',
-                'properties.name as property_name',
-            ])
-            ->orderBy('properties.name')
-            ->orderBy('property_units.unit_name')
-            ->get();
+        $data['units'] = $this->propertyService->allUnit();
 
         $data['bulkAssignmentData'] = [
             'tenants' => $data['tenants']->map(function ($tenant) {
@@ -134,11 +124,21 @@ class TenantController extends Controller
                     'property_id' => $unit->property_id,
                     'name' => $unit->unit_name,
                     'property_name' => $unit->property_name,
+                    'occupancy_label' => $unit->occupancy_label,
+                    'availability_label' => $unit->availability_label,
+                    'active_tenant_count' => (int) ($unit->active_tenant_count ?? 0),
+                    'available_slots' => (int) ($unit->available_slots ?? 0),
+                    'max_occupancy' => (int) ($unit->max_occupancy ?? 1),
+                    'is_available_for_assignment' => (bool) ($unit->is_available_for_assignment ?? false),
+                    'manual_availability_status' => $unit->manual_availability_status ?? PropertyUnit::MANUAL_AVAILABILITY_ACTIVE,
                 ];
             })->values(),
             'tenantAssignments' => TenantUnitAssignment::query()
                 ->join('tenants', 'tenant_unit_assignments.tenant_id', '=', 'tenants.id')
                 ->where('tenants.owner_user_id', getOwnerUserId())
+                ->when(Schema::hasColumn('tenant_unit_assignments', 'is_current'), function ($query) {
+                    $query->where('tenant_unit_assignments.is_current', true);
+                })
                 ->select([
                     'tenant_unit_assignments.tenant_id',
                     'tenant_unit_assignments.property_id',
@@ -227,7 +227,7 @@ class TenantController extends Controller
             $data['tenant'] = $this->tenantService->getById($id);
             return view('owner.tenants.details.document', $data);
         } elseif ($request->tab == 'closing-history') {
-            $data['pageTitle'] = __('Closing History');
+            $data['pageTitle'] = __('Move-Out History');
             $data['navTenantClosingHistoryActiveClass'] = 'active';
             $data['tenant'] = $this->tenantService->closingStatusHistory($id);
             return view('owner.tenants.details.closing-history', $data);

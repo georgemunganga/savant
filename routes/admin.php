@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\LanguageController;
 use App\Http\Controllers\Admin\MailController;
 use App\Http\Controllers\Admin\OwnerController;
 use App\Http\Controllers\Admin\SettingController;
+use App\Http\Controllers\Admin\UnitController;
 use Illuminate\Support\Facades\Route;
 
 Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => ['auth', 'admin']], function () {
@@ -19,6 +20,12 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => ['auth', 'a
         Route::get('delete/{id}', [OwnerController::class, 'delete'])->name('delete');
         Route::post('store', [OwnerController::class, 'store'])->name('store')->middleware('isDemo');
         Route::post('update', [OwnerController::class, 'update'])->name('update')->middleware('isDemo');
+    });
+
+    Route::group(['prefix' => 'unit', 'as' => 'unit.'], function () {
+        Route::get('/', [UnitController::class, 'index'])->name('index');
+        Route::get('show/{id}', [UnitController::class, 'show'])->name('show');
+        Route::post('update/{id}', [UnitController::class, 'update'])->name('update');
     });
 
     Route::group(['prefix' => 'language', 'as' => 'language.'], function () {

@@ -76,6 +76,13 @@
                         <span>{{ __('Owner') }}</span>
                     </a>
                 </li>
+                <li class="{{ @$navUnitActiveClass }}">
+                    <a href="{{ route('admin.unit.index') }}"
+                        class="{{ @$navUnitActiveClass ? 'active' : '' }}">
+                        <i class="ri-home-gear-line"></i>
+                        <span>{{ __('Units') }}</span>
+                    </a>
+                </li>
                 <li>
                     <a href="{{ route('admin.setting.general-setting') }}">
                         <i class="ri-settings-3-line"></i>

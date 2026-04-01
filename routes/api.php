@@ -4,7 +4,9 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentSubscriptionController;
+use App\Http\Controllers\Api\PublicPropertyCatalogController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\PublicPropertyAvailabilityController;
 use App\Http\Controllers\Api\SettingController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -35,6 +37,18 @@ Route::get('system-currency', [SettingController::class, 'systemCurrency']);
 Route::get('system-setting', [SettingController::class, 'systemSetting']);
 Route::get('languages', [SettingController::class, 'getLanguage']);
 Route::get('language-data/{code}', [SettingController::class, 'getLanguageJson']);
+Route::get('public/home', [PublicPropertyCatalogController::class, 'home']);
+Route::get('public/properties', [PublicPropertyCatalogController::class, 'index']);
+Route::get('public/properties/by-slug/{slug}', [PublicPropertyCatalogController::class, 'showBySlug']);
+Route::get('public/properties/{propertyId}', [PublicPropertyCatalogController::class, 'show']);
+Route::post(
+    'public/properties/{propertyId}/availability-check',
+    [PublicPropertyAvailabilityController::class, 'check']
+);
+Route::post(
+    'public/properties/{propertyId}/waitlist',
+    [PublicPropertyAvailabilityController::class, 'waitlist']
+);
 
 
 Route::group(['middleware' => ['auth:api']], function () {

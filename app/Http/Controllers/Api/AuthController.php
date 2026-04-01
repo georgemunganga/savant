@@ -29,6 +29,26 @@ class AuthController extends Controller
     use SendsPasswordResetEmails;
     use ResponseTrait;
 
+    private function roleSlugFor(int $role): string
+    {
+        return match ($role) {
+            USER_ROLE_ADMIN => 'admin',
+            USER_ROLE_OWNER, USER_ROLE_TEAM_MEMBER => 'owner',
+            USER_ROLE_TENANT => 'tenant',
+            USER_ROLE_MAINTAINER => 'maintainer',
+            default => 'guest',
+        };
+    }
+
+    private function authUserPayload(User $user): array
+    {
+        $payload = $user->only(['id', 'first_name', 'last_name', 'email', 'contact_number', 'role', 'owner_user_id']);
+        $payload['image'] = $user->image;
+        $payload['role_slug'] = $this->roleSlugFor((int) $user->role);
+
+        return $payload;
+    }
+
     public function ownerRegister(OwnerRegisterRequest $request)
     {
         DB::beginTransaction();
@@ -204,18 +224,21 @@ class AuthController extends Controller
                     throw new Exception(__('Your account has been deleted.'));
                 } elseif (isset($user) && ($user->status == USER_STATUS_ACTIVE)) {
                     if (isset($user) && ($user->role == USER_ROLE_TENANT)) {
-                        if (!is_null($user->tenant->property_id) && !is_null($user->tenant->property_id)) {
+                        if (
+                            !is_null($user->tenant) &&
+                            (int) $user->tenant->status === TENANT_STATUS_ACTIVE &&
+                            !is_null($user->tenant->property_id) &&
+                            !is_null($user->tenant->unit_id)
+                        ) {
                             $response['access_token'] = $user->createToken(Str::random(40))->accessToken;
-                            $response['user'] = $user->only(['id', 'first_name', 'last_name', 'email', 'contact_number', 'role', 'owner_user_id']);
-                            $response['user']['image'] = $user->image;
+                            $response['user'] = $this->authUserPayload($user);
                             $message = __(LOGIN_SUCCESSFUL);
                         } else {
                             throw new Exception(__('Your account is inactive. Please contact with admin'));
                         }
                     } else {
                         $response['access_token'] = $user->createToken(Str::random(40))->accessToken;
-                        $response['user'] = $user->only(['id', 'first_name', 'last_name', 'email', 'contact_number', 'role', 'owner_user_id']);
-                        $response['user']['image'] = $user->image;
+                        $response['user'] = $this->authUserPayload($user);
                         $message = __(LOGIN_SUCCESSFUL);
                     }
                 }

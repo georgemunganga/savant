@@ -9,17 +9,19 @@ use App\Http\Requests\Owner\Property\RentChargeRequest;
 use App\Http\Requests\UnitRequest;
 use App\Models\Property;
 use App\Services\PropertyService;
+use App\Services\UnitManagementService;
 use App\Traits\ResponseTrait;
 use Illuminate\Http\Request;
 
 class PropertyController extends Controller
 {
     use ResponseTrait;
-    public $propertyService;
+    public $propertyService, $unitManagementService;
 
     public function __construct()
     {
         $this->propertyService = new PropertyService;
+        $this->unitManagementService = new UnitManagementService;
     }
 
     public function allProperty(Request $request)
@@ -100,6 +102,34 @@ class PropertyController extends Controller
         $data['property'] = $this->propertyService->getDetailsById($id);
         $data['units'] = $this->propertyService->getUnitsByPropertyId($id)->getData()->data;
         return view('owner.property.show')->with($data);
+    }
+
+    public function unitDetails($id)
+    {
+        $data['pageTitle'] = __("Unit History");
+        $data['navPropertyMMShowClass'] = 'mm-show';
+        $data['subNavAllUnitMMActiveClass'] = 'mm-active';
+        $data['subNavAllUnitActiveClass'] = 'active';
+        $data = array_merge($data, $this->unitManagementService->getOwnerUnitDetail((int) $id));
+
+        return view('owner.property.unit-history')->with($data);
+    }
+
+    public function unitOperationalUpdate(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'manual_availability_status' => ['required', 'in:active,on_hold,off_market'],
+            'manual_status_reason' => ['nullable', 'string', 'max:2000'],
+            'max_occupancy' => ['required', 'integer', 'min:1'],
+        ]);
+
+        try {
+            $this->unitManagementService->updateOwnerUnitSettings((int) $id, $validated);
+
+            return redirect()->back()->with('success', __(UPDATED_SUCCESSFULLY));
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', getErrorMessage($e, $e->getMessage()));
+        }
     }
 
     public function edit($id)

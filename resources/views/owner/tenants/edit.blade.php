@@ -341,7 +341,7 @@
                                                                         @foreach ($units as $unit)
                                                                             <option value="{{ $unit->id }}"
                                                                                 {{ $unit->id == $tenant->unit_id ? 'selected' : '' }}>
-                                                                                {{ $unit->name }}</option>
+                                                                                {{ $unit->name }}{{ !empty($unit->availability_label) ? ' (' . $unit->availability_label . ')' : '' }}</option>
                                                                         @endforeach
                                                                     </select>
                                                                 </div>
@@ -452,7 +452,13 @@
                                                                                         <div
                                                                                             class="property-info-item property-info-item-right font-13">
                                                                                             <i
-                                                                                                class="ri-checkbox-circle-fill me-1 "></i>{{ __('Available For Tenant') }}
+                                                                                                class="ri-checkbox-circle-fill me-1 "></i>
+                                                                                            <span
+                                                                                                id="unit_availability_label">{{ $tenant->availability_label ?? __('Select a unit') }}</span>
+                                                                                            <div class="font-13 mt-1 text-muted"
+                                                                                                id="unit_occupancy_label">
+                                                                                                {{ $tenant->occupancy_label ?? __('Capacity information will appear here') }}
+                                                                                            </div>
                                                                                         </div>
                                                                                     </div>
                                                                                 </div>

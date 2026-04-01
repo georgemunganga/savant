@@ -14,6 +14,17 @@ class TenantUnitAssignment extends Model
         'tenant_id',
         'property_id',
         'unit_id',
+        'assigned_at',
+        'released_at',
+        'release_reason',
+        'released_by_user_id',
+        'is_current',
+    ];
+
+    protected $casts = [
+        'assigned_at' => 'datetime',
+        'released_at' => 'datetime',
+        'is_current' => 'boolean',
     ];
 
     public function tenant(): BelongsTo
@@ -29,5 +40,10 @@ class TenantUnitAssignment extends Model
     public function unit(): BelongsTo
     {
         return $this->belongsTo(PropertyUnit::class, 'unit_id');
+    }
+
+    public function releasedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'released_by_user_id');
     }
 }

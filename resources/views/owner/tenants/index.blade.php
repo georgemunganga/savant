@@ -142,7 +142,7 @@
                                                             @elseif($tenant->status == TENANT_STATUS_INACTIVE)
                                                                 <span class="bg-red-transparent radius-4 px-2 py-1 red-color font-13">{{ __('Inactive') }}</span>
                                                             @elseif($tenant->status == TENANT_STATUS_CLOSE)
-                                                                <span class="bg-orange-transparent radius-4 px-1 py-1 orange-color font-13">{{ __('Close') }}</span>
+                                                                <span class="bg-orange-transparent radius-4 px-1 py-1 orange-color font-13">{{ __('Archived') }}</span>
                                                             @else
                                                                 <span class="bg-blue-transparent radius-4 px-1 py-1 blue-color font-13">{{ __('Draft') }}</span>
                                                             @endif

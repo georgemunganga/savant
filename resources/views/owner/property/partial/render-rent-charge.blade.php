@@ -36,6 +36,7 @@
                 <div class="accordion" id="accordionExample">
                     @php $c = 1; @endphp
                     @foreach ($propertyUnits as $propertyUnit)
+                        @php $publicOption = @$publicOptionsByUnit[$propertyUnit->id]; @endphp
                         <input type="hidden" name="propertyUnit[id][]" value="{{ $propertyUnit->id }}">
                         <div class="accordion-item unit-block-item-box bg-white radius-4 mb-25">
                             <h4 class="accordion-header" id="heading{{ $propertyUnit->id }}">
@@ -249,6 +250,56 @@
                                                         </div>
                                                     </div>
                                                 </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="border-top pt-25 mt-10">
+                                        <h6 class="mb-20">Public Website Option</h6>
+                                        <p class="text-muted mb-20">
+                                            Enable only the units you want on the website. Sort order and the default website option are selected automatically.
+                                        </p>
+                                        <div class="row">
+                                            <div class="col-md-2 mb-25">
+                                                <label class="label-text-title color-heading font-medium mb-2">Public Listing</label>
+                                                <select name="propertyUnit[public_enabled][]" class="form-control">
+                                                    <option value="0" {{ !$publicOption ? 'selected' : '' }}>Disabled</option>
+                                                    <option value="1" {{ $publicOption ? 'selected' : '' }}>Enabled</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-2 mb-25">
+                                                <label class="label-text-title color-heading font-medium mb-2">Rental Kind <span class="text-danger">*</span></label>
+                                                <select name="propertyUnit[public_rental_kind][]" class="form-control">
+                                                    @foreach (['whole_unit' => 'Whole Unit', 'private_room' => 'Private Room', 'shared_space' => 'Shared Space'] as $value => $label)
+                                                        <option value="{{ $value }}"
+                                                            {{ @$publicOption->rental_kind === $value ? 'selected' : ($value === 'whole_unit' ? 'selected' : '') }}>
+                                                            {{ $label }}
+                                                        </option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                            <div class="col-md-2 mb-25">
+                                                <label class="label-text-title color-heading font-medium mb-2">Monthly Rate <span class="text-danger">*</span></label>
+                                                <input type="number" step="any" min="0" class="form-control"
+                                                    name="propertyUnit[public_monthly_rate][]"
+                                                    value="{{ @$publicOption->monthly_rate ?? $propertyUnit->general_rent }}">
+                                            </div>
+                                            <div class="col-md-2 mb-25">
+                                                <label class="label-text-title color-heading font-medium mb-2">Nightly Rate <span class="text-danger">*</span></label>
+                                                <input type="number" step="any" min="0" class="form-control"
+                                                    name="propertyUnit[public_nightly_rate][]"
+                                                    value="{{ @$publicOption->nightly_rate }}">
+                                            </div>
+                                            <div class="col-md-2 mb-25">
+                                                <label class="label-text-title color-heading font-medium mb-2">Max Guests</label>
+                                                <input type="number" min="1" class="form-control"
+                                                    name="propertyUnit[public_max_guests][]"
+                                                    value="{{ @$publicOption->max_guests ?? $propertyUnit->max_occupancy }}">
+                                            </div>
+                                            <div class="col-md-4 mb-25 d-flex align-items-end">
+                                                <small class="text-muted">
+                                                    The website automatically chooses the default unit option using the lowest monthly rate.
+                                                </small>
                                             </div>
                                         </div>
                                     </div>

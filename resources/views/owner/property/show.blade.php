@@ -134,7 +134,19 @@
                                                 </tr>
                                                 <tr>
                                                     <th>{{ __('Occupied Units') }}</th>
-                                                    <th class="text-end">{{ $property->number_of_unit - $property->available_unit }}</th>
+                                                    <th class="text-end">{{ $property->occupied_unit }}</th>
+                                                </tr>
+                                                <tr>
+                                                    <th>{{ __('Partially Occupied Units') }}</th>
+                                                    <th class="text-end">{{ $property->partial_unit }}</th>
+                                                </tr>
+                                                <tr>
+                                                    <th>{{ __('Full Units') }}</th>
+                                                    <th class="text-end">{{ $property->full_unit }}</th>
+                                                </tr>
+                                                <tr>
+                                                    <th>{{ __('On Hold / Off Market') }}</th>
+                                                    <th class="text-end">{{ $property->on_hold_unit + $property->off_market_unit }}</th>
                                                 </tr>
                                                 <tr>
                                                     <th>{{ __('Current Tenants') }}</th>
@@ -201,7 +213,10 @@
                                                     <th>{{ __('Condition') }}</th>
                                                     <th>{{ __('Description') }}</th>
                                                     <th>{{ __('Image') }}</th>
+                                                    <th>{{ __('Occupancy') }}</th>
                                                     <th>{{ __('Availability') }}</th>
+                                                    <th>{{ __('Last Vacated') }}</th>
+                                                    <th>{{ __('History') }}</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -219,25 +234,40 @@
                                                         <td>{{ Str::limit($propertyUnit->description, 100, '...') }}</td>
                                                         <td>
                                                             <img class="rounded-circle avatar-md tbl-user-image"
-                                                                src="{{ assetUrl($propertyUnit->folder_name . '/' . $propertyUnit->file_name) }}">
+                                                                src="{{ $propertyUnit->folder_name && $propertyUnit->file_name ? assetUrl($propertyUnit->folder_name . '/' . $propertyUnit->file_name) : asset('assets/images/no-image.jpg') }}">
                                                         </td>
                                                         <td>
+                                                            <span
+                                                                class="badge {{ $propertyUnit->occupancy_state === 'full' ? 'bg-danger' : ($propertyUnit->occupancy_state === 'partially_occupied' ? 'bg-warning text-dark' : 'bg-success') }}">
+                                                                {{ $propertyUnit->occupancy_label }}
+                                                            </span>
                                                             @if (($propertyUnit->active_tenant_count ?? 0) > 0)
-                                                                <span class="red-color">{{ __('Occupied') }}</span>
                                                                 <div class="font-13 mt-1">
-                                                                    {{ $propertyUnit->active_tenant_count }} {{ __('tenant(s)') }}
-                                                                </div>
-                                                                <div class="font-13">
                                                                     {{ $propertyUnit->active_tenant_names }}
                                                                 </div>
-                                                            @else
-                                                                <span class="green-color">{{ __('Available') }}</span>
                                                             @endif
+                                                        </td>
+                                                        <td>
+                                                            <span
+                                                                class="badge {{ ($propertyUnit->manual_availability_status ?? 'active') === 'off_market' ? 'bg-secondary' : ((($propertyUnit->manual_availability_status ?? 'active') === 'on_hold') ? 'bg-dark' : (($propertyUnit->is_available_for_assignment ?? false) ? 'bg-success' : 'bg-danger')) }}">
+                                                                {{ $propertyUnit->availability_label }}
+                                                            </span>
+                                                            <div class="font-13 mt-1">
+                                                                {{ __('Slots') }}: {{ $propertyUnit->available_slots ?? 0 }}
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            {{ $propertyUnit->available_since ? \Carbon\Carbon::parse($propertyUnit->available_since)->format('d M Y H:i') : __('N/A') }}
+                                                        </td>
+                                                        <td>
+                                                            <a href="{{ route('owner.property.unit.details', $propertyUnit->id) }}"
+                                                                class="theme-link"
+                                                                title="{{ __('View Unit History') }}">{{ __('View History') }}</a>
                                                         </td>
                                                     </tr>
                                                 @empty
                                                     <tr>
-                                                        <td colspan="5">{{ __('No Unit Found') }}</td>
+                                                        <td colspan="15">{{ __('No Unit Found') }}</td>
                                                     </tr>
                                                 @endforelse
                                             </tbody>

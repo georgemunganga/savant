@@ -8,36 +8,31 @@ use App\Models\Property;
 use App\Models\PropertyDetail;
 use App\Models\PropertyImage;
 use App\Models\PropertyUnit;
+use App\Models\PropertyUnitActivityLog;
+use App\Models\PublicPropertyOption;
 use App\Models\TenantUnitAssignment;
 use App\Traits\ResponseTrait;
 use Exception;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class PropertyService
 {
     use ResponseTrait;
 
+    public function __construct(
+        private readonly UnitAvailabilityService $unitAvailabilityService = new UnitAvailabilityService()
+    ) {
+    }
+
     public function getAll()
     {
-        $occupiedSummarySql = "(select tenant_unit_assignments.property_id, COUNT(DISTINCT tenant_unit_assignments.unit_id) as occupied_unit
-            from tenant_unit_assignments
-            join tenants on tenants.id = tenant_unit_assignments.tenant_id
-            join users on users.id = tenants.user_id
-            where users.deleted_at IS NULL and tenants.status = " . TENANT_STATUS_ACTIVE . " and tenants.owner_user_id = " . getOwnerUserId() . "
-            group by tenant_unit_assignments.property_id) as occupied_summary";
-        $roomSummarySql = "(select property_units.property_id, SUM(property_units.bedroom) as rooms
-            from property_units
-            where property_units.deleted_at IS NULL
-            group by property_units.property_id) as room_summary";
-
-        $data = Property::query()
-            ->with('propertyUnits')
-            ->leftJoin(DB::raw($occupiedSummarySql), 'occupied_summary.property_id', '=', 'properties.id')
-            ->leftJoin(DB::raw($roomSummarySql), 'room_summary.property_id', '=', 'properties.id')
-            ->selectRaw('GREATEST(properties.number_of_unit - COALESCE(occupied_summary.occupied_unit, 0), 0) as available_unit, COALESCE(room_summary.rooms, 0) as rooms, properties.*')
+        $properties = Property::query()
+            ->with(['propertyUnits', 'propertyDetail'])
             ->where('properties.owner_user_id', getOwnerUserId())
             ->get();
-        return $data?->makeHidden(['updated_at', 'created_at', 'deleted_at']);
+
+        return $this->appendAvailabilityToProperties($properties);
     }
 
     public function getAllData()
@@ -80,57 +75,14 @@ class PropertyService
 
     public function allUnit()
     {
-        $activeTenantSummary = TenantUnitAssignment::query()
-            ->join('tenants', 'tenant_unit_assignments.tenant_id', '=', 'tenants.id')
-            ->join('users', 'tenants.user_id', '=', 'users.id')
-            ->where('tenants.status', TENANT_STATUS_ACTIVE)
-            ->where('tenants.owner_user_id', getOwnerUserId())
-            ->whereNull('users.deleted_at')
-            ->selectRaw("tenant_unit_assignments.unit_id, COUNT(DISTINCT tenant_unit_assignments.tenant_id) as active_tenant_count, GROUP_CONCAT(DISTINCT CONCAT(users.first_name, ' ', users.last_name) ORDER BY users.first_name SEPARATOR ', ') as active_tenant_names, MIN(tenants.id) as first_tenant_id")
-            ->groupBy('tenant_unit_assignments.unit_id');
-
-        $data = PropertyUnit::query()
-            ->join('properties', ['property_units.property_id' => 'properties.id'])
-            ->leftJoinSub($activeTenantSummary, 'tenant_summary', function ($join) {
-                $join->on('property_units.id', '=', 'tenant_summary.unit_id');
-            })
-            ->leftJoin('file_managers', ['property_units.id' => 'file_managers.origin_id', 'file_managers.origin_type' => (DB::raw("'App\\\Models\\\PropertyUnit'"))])
-            ->select(
-                'property_units.*',
-                'properties.name as property_name',
-                'file_managers.file_name',
-                'file_managers.folder_name',
-                'tenant_summary.active_tenant_count',
-                'tenant_summary.active_tenant_names',
-                'tenant_summary.first_tenant_id'
-            )
-            ->orderBy('properties.id', 'asc')
-            ->where('properties.owner_user_id', getOwnerUserId())
-            ->get();
-        return $data?->makeHidden(['updated_at', 'created_at', 'deleted_at']);
+        return $this->unitAvailabilityService
+            ->getUnits(['owner_user_id' => getOwnerUserId()])
+            ->makeHidden(['updated_at', 'created_at', 'deleted_at']);
     }
 
     public function getAllCount()
     {
-        $tenantPropertySummarySql = "(select tenant_unit_assignments.property_id,
-            COUNT(DISTINCT tenant_unit_assignments.tenant_id) as total_tenant,
-            COUNT(DISTINCT tenant_unit_assignments.unit_id) as occupied_unit
-            from tenant_unit_assignments
-            join tenants on tenants.id = tenant_unit_assignments.tenant_id
-            join users on users.id = tenants.user_id
-            where users.deleted_at IS NULL and tenants.status = " . TENANT_STATUS_ACTIVE . " and tenants.owner_user_id = " . getOwnerUserId() . "
-            group by tenant_unit_assignments.property_id) as tenant_property_summary";
-
-        $data = Property::query()
-            ->leftJoin(DB::raw($tenantPropertySummarySql), 'tenant_property_summary.property_id', '=', 'properties.id')
-            ->leftJoin('property_details', 'properties.id', '=', 'property_details.property_id')
-            ->leftJoin('maintainers', 'properties.id', '=', 'maintainers.property_id')
-            ->selectRaw('COALESCE(tenant_property_summary.total_tenant, 0) as total_tenant, COALESCE(tenant_property_summary.occupied_unit, 0) as occupied_unit, COUNT(DISTINCT maintainers.id) as total_maintainers,properties.*,property_details.address')
-            ->groupBy('properties.id')
-            ->orderBy('properties.id')
-            ->where('properties.owner_user_id', getOwnerUserId())
-            ->get();
-        return $data?->makeHidden(['updated_at', 'created_at', 'deleted_at']);
+        return $this->getAll();
     }
 
     public function getById($id)
@@ -140,34 +92,12 @@ class PropertyService
 
     public function getDetailsById($id)
     {
-        $tenantPropertySummarySql = "(select assignment_per_tenant.property_id,
-            COUNT(DISTINCT assignment_per_tenant.tenant_id) as total_tenant,
-            COUNT(DISTINCT assignment_per_tenant.unit_id) as occupied_unit,
-            AVG(assignment_per_tenant.general_rent) as avg_general_rent,
-            SUM(assignment_per_tenant.security_deposit) as total_security_deposit,
-            SUM(assignment_per_tenant.late_fee) as total_late_fee
-            from (
-                select tenant_unit_assignments.property_id, tenant_unit_assignments.unit_id, tenants.id as tenant_id,
-                    tenants.general_rent, tenants.security_deposit, tenants.late_fee
-                from tenant_unit_assignments
-                join tenants on tenants.id = tenant_unit_assignments.tenant_id
-                join users on users.id = tenants.user_id
-                where users.deleted_at IS NULL and tenants.status = " . TENANT_STATUS_ACTIVE . " and tenants.owner_user_id = " . getOwnerUserId() . "
-                group by tenant_unit_assignments.property_id, tenant_unit_assignments.unit_id, tenants.id, tenants.general_rent, tenants.security_deposit, tenants.late_fee
-            ) as assignment_per_tenant
-            group by assignment_per_tenant.property_id) as tenant_property_summary";
-
         $data = Property::query()
             ->leftJoin('property_details', 'properties.id', '=', 'property_details.property_id')
             ->leftJoin('users', function ($q) {
                 $q->on('properties.maintainer_id', '=', 'users.id')->whereNull('users.deleted_at');
             })
-            ->leftJoin(DB::raw($tenantPropertySummarySql), 'tenant_property_summary.property_id', '=', 'properties.id')
-            ->selectRaw('GREATEST(properties.number_of_unit - COALESCE(tenant_property_summary.occupied_unit, 0), 0) as available_unit,
-             COALESCE(tenant_property_summary.total_tenant, 0) as total_tenant,
-             tenant_property_summary.avg_general_rent as avg_general_rent,
-             COALESCE(tenant_property_summary.total_security_deposit, 0) as total_security_deposit,
-             COALESCE(tenant_property_summary.total_late_fee, 0) as total_late_fee,properties.*,
+            ->selectRaw('properties.*,
              property_details.lease_amount,
              property_details.lease_start_date,
              property_details.lease_end_date,
@@ -180,24 +110,38 @@ class PropertyService
              users.last_name')
             ->where('properties.owner_user_id', getOwnerUserId())
             ->findOrFail($id);
+
+        $availabilitySummary = $this->unitAvailabilityService->getPropertySummaries([$id], getOwnerUserId())->get((int) $id, [
+            'available_unit' => 0,
+            'occupied_unit' => 0,
+            'full_unit' => 0,
+            'partial_unit' => 0,
+            'vacant_unit' => 0,
+            'on_hold_unit' => 0,
+            'off_market_unit' => 0,
+            'total_tenant' => 0,
+        ]);
+        $financialSummary = $this->getPropertyFinancialSummary((int) $id);
+
+        foreach ($availabilitySummary as $key => $value) {
+            $data->setAttribute($key, $value);
+        }
+        $data->setAttribute('avg_general_rent', $financialSummary->avg_general_rent ?? 0);
+        $data->setAttribute('total_security_deposit', $financialSummary->total_security_deposit ?? 0);
+        $data->setAttribute('total_late_fee', $financialSummary->total_late_fee ?? 0);
+
         return $data?->makeHidden(['updated_at', 'created_at', 'deleted_at']);
     }
 
     public function getByType($type)
     {
-        $occupiedSummarySql = "(select tenant_unit_assignments.property_id, COUNT(DISTINCT tenant_unit_assignments.unit_id) as occupied_unit
-            from tenant_unit_assignments
-            join tenants on tenants.id = tenant_unit_assignments.tenant_id
-            join users on users.id = tenants.user_id
-            where users.deleted_at IS NULL and tenants.status = " . TENANT_STATUS_ACTIVE . " and tenants.owner_user_id = " . getOwnerUserId() . "
-            group by tenant_unit_assignments.property_id) as occupied_summary";
-
-        return Property::query()
-            ->leftJoin(DB::raw($occupiedSummarySql), 'occupied_summary.property_id', '=', 'properties.id')
-            ->selectRaw('GREATEST(properties.number_of_unit - COALESCE(occupied_summary.occupied_unit, 0), 0) as available_unit,properties.*')
+        $properties = Property::query()
+            ->with(['propertyUnits', 'propertyDetail'])
             ->where('properties.property_type', $type)
             ->where('properties.owner_user_id', getOwnerUserId())
             ->get();
+
+        return $this->appendAvailabilityToProperties($properties);
     }
 
     public function getByTypeCount($type)
@@ -210,18 +154,7 @@ class PropertyService
 
     public function getByTypeData($type)
     {
-        $occupiedSummarySql = "(select tenant_unit_assignments.property_id, COUNT(DISTINCT tenant_unit_assignments.unit_id) as occupied_unit
-            from tenant_unit_assignments
-            join tenants on tenants.id = tenant_unit_assignments.tenant_id
-            join users on users.id = tenants.user_id
-            where users.deleted_at IS NULL and tenants.status = " . TENANT_STATUS_ACTIVE . " and tenants.owner_user_id = " . getOwnerUserId() . "
-            group by tenant_unit_assignments.property_id) as occupied_summary";
-
-        $properties = Property::query()
-            ->leftJoin(DB::raw($occupiedSummarySql), 'occupied_summary.property_id', '=', 'properties.id')
-            ->selectRaw('GREATEST(properties.number_of_unit - COALESCE(occupied_summary.occupied_unit, 0), 0) as available_unit,properties.*')
-            ->where('properties.property_type', $type)
-            ->where('properties.owner_user_id', getOwnerUserId());
+        $properties = $this->getByType($type);
 
         return datatables($properties)
             ->addIndexColumn()
@@ -272,10 +205,34 @@ class PropertyService
                 ->select('properties.name', 'properties.id', 'properties.thumbnail_image_id', 'property_details.address')
                 ->where('properties.owner_user_id', getOwnerUserId())
                 ->findOrFail($id);
-            $propertyUnits = PropertyUnit::query()
-                ->select('id', 'unit_name as name', 'general_rent', 'security_deposit', 'late_fee', 'security_deposit_type', 'late_fee_type', 'incident_receipt', 'rent_type', 'monthly_due_day', 'yearly_due_day')
-                ->where('property_id', $id)
-                ->get();
+            $propertyUnits = $this->unitAvailabilityService
+                ->getUnits([
+                    'owner_user_id' => getOwnerUserId(),
+                    'property_ids' => [$id],
+                ])
+                ->map(function ($unit) {
+                    return [
+                        'id' => $unit->id,
+                        'name' => $unit->unit_name,
+                        'general_rent' => $unit->general_rent,
+                        'security_deposit' => $unit->security_deposit,
+                        'late_fee' => $unit->late_fee,
+                        'security_deposit_type' => $unit->security_deposit_type,
+                        'late_fee_type' => $unit->late_fee_type,
+                        'incident_receipt' => $unit->incident_receipt,
+                        'rent_type' => $unit->rent_type,
+                        'monthly_due_day' => $unit->monthly_due_day,
+                        'yearly_due_day' => $unit->yearly_due_day,
+                        'max_occupancy' => $unit->max_occupancy,
+                        'active_tenant_count' => (int) ($unit->active_tenant_count ?? 0),
+                        'available_slots' => (int) ($unit->available_slots ?? 0),
+                        'occupancy_label' => $unit->occupancy_label,
+                        'availability_label' => $unit->availability_label,
+                        'is_available_for_assignment' => (bool) ($unit->is_available_for_assignment ?? false),
+                        'manual_availability_status' => $unit->manual_availability_status ?? PropertyUnit::MANUAL_AVAILABILITY_ACTIVE,
+                    ];
+                })
+                ->values();
 
             $data = $property;
             $data->units = $propertyUnits;
@@ -304,6 +261,22 @@ class PropertyService
             $property->name = ($request->property_type == PROPERTY_TYPE_OWN) ? $request->own_property_name : $request->lease_property_name;
             $property->number_of_unit = ($request->property_type == PROPERTY_TYPE_OWN) ? $request->own_number_of_unit : $request->lease_number_of_unit;
             $property->description = ($request->property_type == PROPERTY_TYPE_OWN) ? $request->own_description : $request->lease_description;
+            $property->is_public = $request->boolean('is_public');
+            $property->public_slug = $request->boolean('is_public')
+                ? $this->resolvePublicSlug($property->name, $request->public_slug ?: $property->public_slug, $property->id ?: null)
+                : null;
+            $property->public_category = $request->boolean('is_public')
+                ? $request->input('public_category')
+                : null;
+            $property->public_summary = $request->boolean('is_public')
+                ? $this->resolvePublicSummary($request->public_summary, $property->description, $property->name)
+                : null;
+            $property->public_home_sections = $request->boolean('is_public')
+                ? implode(',', $request->input('public_home_sections', []))
+                : null;
+            $property->public_sort_order = $request->boolean('is_public')
+                ? (int) $request->input('public_sort_order', 0)
+                : 0;
             $property->save();
 
             $propertyDetail = PropertyDetail::wherePropertyId($property->id)->first();
@@ -315,6 +288,10 @@ class PropertyService
             $propertyDetail->lease_start_date = ($request->property_type == PROPERTY_TYPE_LEASE && !empty($request->lease_start_date)) ? date('Y-m-d', strtotime($request->lease_start_date)) : null;
             $propertyDetail->lease_end_date = ($request->property_type == PROPERTY_TYPE_LEASE && !empty($request->lease_end_date)) ? date('Y-m-d', strtotime($request->lease_end_date)) : null;
             $propertyDetail->save();
+
+            $this->syncWholePropertyPublicOption($property, $request);
+            $this->normalizePublicWebsiteMetadata($property);
+            $this->normalizePublicOptionOrderingAndDefault($property);
             DB::commit();
 
             $locationService = new LocationService;
@@ -384,7 +361,7 @@ class PropertyService
                     $property_unit->bedroom = $request->single['bedroom'][$i];
                     $property_unit->bath = $request->single['bath'][$i];
                     $property_unit->kitchen = $request->single['kitchen'][$i];
-                    $property_unit->max_occupancy = $request->single['max_occupancy'][$i] ?? null;
+                    $property_unit->max_occupancy = $request->single['max_occupancy'][$i] ?? 1;
                     $property_unit->save();
                 }
             } else {
@@ -402,7 +379,7 @@ class PropertyService
                     $property_unit->bedroom = $request->multiple['bedroom'][$i];
                     $property_unit->bath = $request->multiple['bath'][$i];
                     $property_unit->kitchen = $request->multiple['kitchen'][$i];
-                    $property_unit->max_occupancy = $request->multiple['max_occupancy'][$i] ?? null;
+                    $property_unit->max_occupancy = $request->multiple['max_occupancy'][$i] ?? 1;
                     $property_unit->square_feet = $request->multiple['square_feet'][$i];
                     $property_unit->amenities = $request->multiple['amenities'][$i];
                     $property_unit->condition = $request->multiple['condition'][$i];
@@ -439,6 +416,11 @@ class PropertyService
             $response['property'] = $property;
             $response['propertyUnits'] = PropertyUnit::where('property_id', $response['property']->id)->get();
             $response['propertyUnitIds'] = PropertyUnit::where('property_id', $response['property']->id)->pluck('id')->toArray();
+            $response['publicOptionsByUnit'] = PublicPropertyOption::query()
+                ->where('property_id', $response['property']->id)
+                ->whereNotNull('property_unit_id')
+                ->get()
+                ->keyBy('property_unit_id');
             $response['message'] = __(UPDATED_SUCCESSFULLY);
             $response['step'] = RENT_CHARGE_ACTIVE_CLASS;
             $response['view'] = view('owner.property.partial.render-rent-charge', $response)->render();
@@ -470,7 +452,11 @@ class PropertyService
                 $property_unit->lease_end_date = ($request->propertyUnit['rent_type'][$i] == PROPERTY_UNIT_RENT_TYPE_CUSTOM) ? date('Y-m-d', strtotime($request->propertyUnit['lease_end_date'][$i])) : null;
                 $property_unit->lease_payment_due_date = ($request->propertyUnit['rent_type'][$i] == PROPERTY_UNIT_RENT_TYPE_CUSTOM) ? date('Y-m-d', strtotime($request->propertyUnit['lease_payment_due_date'][$i])) : null;
                 $property_unit->save();
+
+                $this->syncUnitPublicOption($property, $property_unit, $request, $i);
             }
+            $this->normalizePublicWebsiteMetadata($property);
+            $this->normalizePublicOptionOrderingAndDefault($property);
             DB::commit();
             $response['property'] = $property;
             $response['message'] = __(UPDATED_SUCCESSFULLY);
@@ -560,6 +546,7 @@ class PropertyService
                     $property->save();
 
                     $upload['file']->origin_type = "App\Models\Property";
+                    $upload['file']->origin_id = $property->id;
                     $upload['file']->save();
                 } else {
                     throw new Exception($upload['message']);
@@ -641,6 +628,11 @@ class PropertyService
             $response['property'] = Property::where('owner_user_id', getOwnerUserId())->findOrFail($request->property_id);
             $response['propertyUnits'] = PropertyUnit::where('property_id', $response['property']->id)->get();
             $response['propertyUnitIds'] = PropertyUnit::where('property_id', $response['property']->id)->pluck('id')->toArray();
+            $response['publicOptionsByUnit'] = PublicPropertyOption::query()
+                ->where('property_id', $response['property']->id)
+                ->whereNotNull('property_unit_id')
+                ->get()
+                ->keyBy('property_unit_id');
             $response['view'] = view('owner.property.partial.render-rent-charge', $response)->render();
             return $this->success($response);
         } catch (\Exception $e) {
@@ -652,15 +644,36 @@ class PropertyService
     {
         DB::beginTransaction();
         try {
+            $property = Property::where('owner_user_id', getOwnerUserId())->findOrFail($id);
+            $unitIds = PropertyUnit::query()
+                ->where('property_id', $property->id)
+                ->pluck('id');
+
             $activeAssignmentExists = TenantUnitAssignment::query()
                 ->join('tenants', 'tenant_unit_assignments.tenant_id', '=', 'tenants.id')
                 ->where('tenant_unit_assignments.property_id', $id)
                 ->where('tenants.status', TENANT_STATUS_ACTIVE)
+                ->when($this->unitAvailabilityService->supportsTemporalAssignments(), function ($query) {
+                    $query->where('tenant_unit_assignments.is_current', true);
+                })
                 ->exists();
             if ($activeAssignmentExists) {
-                throw new Exception('Tenant Available! You can\'t delete');
+                throw new Exception(__('Active tenant assignments exist. Move tenants out before retiring this property.'));
             }
-            $property = Property::where('owner_user_id', getOwnerUserId())->findOrFail($id);
+
+            $historicalAssignmentExists = TenantUnitAssignment::query()
+                ->where('property_id', $id)
+                ->exists();
+            $activityLogExists = PropertyUnitActivityLog::query()
+                ->whereIn('unit_id', $unitIds)
+                ->exists();
+            $publicOptionExists = PublicPropertyOption::query()
+                ->where('property_id', $id)
+                ->exists();
+            if ($historicalAssignmentExists || $activityLogExists || $publicOptionExists) {
+                throw new Exception(__('This property has unit history or website usage and cannot be deleted.'));
+            }
+
             if ($property) {
                 foreach (@$property->propertyImages as $propertyImage) {
                     $propertyImage = PropertyImage::find($propertyImage->id);
@@ -687,30 +700,10 @@ class PropertyService
 
     public function getUnitsByPropertyId($id)
     {
-        $activeTenantSummary = TenantUnitAssignment::query()
-            ->join('tenants', 'tenant_unit_assignments.tenant_id', '=', 'tenants.id')
-            ->join('users', 'tenants.user_id', '=', 'users.id')
-            ->where('tenants.status', TENANT_STATUS_ACTIVE)
-            ->where('tenants.owner_user_id', getOwnerUserId())
-            ->whereNull('users.deleted_at')
-            ->selectRaw("tenant_unit_assignments.unit_id, COUNT(DISTINCT tenant_unit_assignments.tenant_id) as active_tenant_count, GROUP_CONCAT(DISTINCT CONCAT(users.first_name, ' ', users.last_name) ORDER BY users.first_name SEPARATOR ', ') as active_tenant_names, MIN(tenants.id) as first_tenant_id")
-            ->groupBy('tenant_unit_assignments.unit_id');
-
-        $propertyUnits = PropertyUnit::query()
-            ->leftJoinSub($activeTenantSummary, 'tenant_summary', function ($join) {
-                $join->on('property_units.id', '=', 'tenant_summary.unit_id');
-            })
-            ->leftJoin('file_managers', ['property_units.id' => 'file_managers.origin_id', 'file_managers.origin_type' => (DB::raw("'App\\\Models\\\PropertyUnit'"))])
-            ->select(
-                'property_units.*',
-                'file_managers.file_name',
-                'file_managers.folder_name',
-                'tenant_summary.active_tenant_count',
-                'tenant_summary.active_tenant_names',
-                'tenant_summary.first_tenant_id'
-            )
-            ->where('property_units.property_id', $id)
-            ->get();
+        $propertyUnits = $this->unitAvailabilityService->getUnits([
+            'owner_user_id' => getOwnerUserId(),
+            'property_ids' => [$id],
+        ]);
         return $this->success($propertyUnits);
     }
 
@@ -721,9 +714,12 @@ class PropertyService
                 ->join('tenants', 'tenant_unit_assignments.tenant_id', '=', 'tenants.id')
                 ->where('tenant_unit_assignments.unit_id', $id)
                 ->where('tenants.status', TENANT_STATUS_ACTIVE)
+                ->when($this->unitAvailabilityService->supportsTemporalAssignments(), function ($query) {
+                    $query->where('tenant_unit_assignments.is_current', true);
+                })
                 ->exists();
             if ($activeAssignmentExists) {
-                throw new Exception('Tenant Available! You can\'t delete');
+                throw new Exception(__('Active tenant assignments exist. Move tenants out before retiring this unit.'));
             }
 
             $propertyIds = Property::query()
@@ -739,6 +735,20 @@ class PropertyService
                 ->find($id);
 
             if ($unit) {
+                $historicalAssignmentExists = TenantUnitAssignment::query()
+                    ->where('unit_id', $id)
+                    ->exists();
+                $activityLogExists = PropertyUnitActivityLog::query()
+                    ->where('unit_id', $id)
+                    ->exists();
+                $publicOptionExists = PublicPropertyOption::query()
+                    ->where('property_unit_id', $id)
+                    ->exists();
+
+                if ($historicalAssignmentExists || $activityLogExists || $publicOptionExists) {
+                    throw new Exception(__('This unit has history or website usage and cannot be deleted.'));
+                }
+
                 $unit->delete();
             } else {
                 throw new Exception(__('No Data Found'));
@@ -751,21 +761,313 @@ class PropertyService
 
     public function getPropertySearch($type, $searchItem)
     {
-        $occupiedSummarySql = "(select tenant_unit_assignments.property_id, COUNT(DISTINCT tenant_unit_assignments.unit_id) as occupied_unit
-            from tenant_unit_assignments
-            join tenants on tenants.id = tenant_unit_assignments.tenant_id
-            join users on users.id = tenants.user_id
-            where users.deleted_at IS NULL and tenants.status = " . TENANT_STATUS_ACTIVE . " and tenants.owner_user_id = " . getOwnerUserId() . "
-            group by tenant_unit_assignments.property_id) as occupied_summary";
-
-        return Property::query()
-            ->leftJoin(DB::raw($occupiedSummarySql), 'occupied_summary.property_id', '=', 'properties.id')
-            ->selectRaw('GREATEST(properties.number_of_unit - COALESCE(occupied_summary.occupied_unit, 0), 0) as available_unit,properties.*')
+        $properties = Property::query()
             ->where('properties.property_type', $type)
             ->where('properties.name', 'LIKE', "%{$searchItem}%")
             ->where('properties.owner_user_id', getOwnerUserId())
             ->get();
+
+        return $this->appendAvailabilityToProperties($properties);
     }
+
+    private function syncWholePropertyPublicOption(Property $property, $request): void
+    {
+        if (! $property->is_public) {
+            PublicPropertyOption::query()
+                ->where('property_id', $property->id)
+                ->delete();
+            return;
+        }
+
+        $option = PublicPropertyOption::query()
+            ->where('property_id', $property->id)
+            ->whereNull('property_unit_id')
+            ->first();
+
+        if (! $request->boolean('enable_whole_property_option')) {
+            if ($option) {
+                $option->delete();
+            }
+            return;
+        }
+
+        if (! $option) {
+            $option = new PublicPropertyOption();
+        }
+
+        $option->property_id = $property->id;
+        $option->property_unit_id = null;
+        $option->rental_kind = $request->input('whole_property_option.rental_kind', 'whole_property');
+        $option->monthly_rate = $this->nullableNumeric($request->input('whole_property_option.monthly_rate'));
+        $option->nightly_rate = $this->nullableNumeric($request->input('whole_property_option.nightly_rate'));
+        $option->max_guests = $this->nullableInteger($request->input('whole_property_option.max_guests'));
+        $option->status = ACTIVE;
+        $option->sort_order = 0;
+        $option->is_default = false;
+        $option->save();
+    }
+
+    private function syncUnitPublicOption(Property $property, PropertyUnit $unit, $request, int $index): void
+    {
+        $option = PublicPropertyOption::query()
+            ->where('property_id', $property->id)
+            ->where('property_unit_id', $unit->id)
+            ->first();
+
+        $enabled = $property->is_public && ((string) data_get($request->input('propertyUnit.public_enabled', []), $index, '0') === '1');
+
+        if (! $enabled) {
+            if ($option) {
+                $option->delete();
+            }
+            return;
+        }
+
+        if (! $option) {
+            $option = new PublicPropertyOption();
+        }
+
+        $option->property_id = $property->id;
+        $option->property_unit_id = $unit->id;
+        $option->rental_kind = data_get($request->input('propertyUnit.public_rental_kind', []), $index, 'whole_unit');
+        $option->monthly_rate = $this->nullableNumeric(
+            data_get($request->input('propertyUnit.public_monthly_rate', []), $index, $unit->general_rent)
+        );
+        $option->nightly_rate = $this->nullableNumeric(
+            data_get($request->input('propertyUnit.public_nightly_rate', []), $index)
+        );
+        $publicMaxGuests = $this->nullableInteger(
+            data_get($request->input('propertyUnit.public_max_guests', []), $index)
+        );
+
+        if (is_null($unit->max_occupancy) && ! is_null($publicMaxGuests)) {
+            $unit->max_occupancy = $publicMaxGuests;
+            $unit->save();
+        }
+
+        $effectiveMaxGuests = $publicMaxGuests ?? $this->nullableInteger($unit->max_occupancy);
+        if (is_null($effectiveMaxGuests)) {
+            throw new Exception(__('Set max occupancy or max guests for :unit before enabling it on the website.', [
+                'unit' => $unit->unit_name ?: __('this unit'),
+            ]));
+        }
+
+        $option->max_guests = $effectiveMaxGuests;
+        $option->status = ACTIVE;
+        $option->sort_order = $index + 1;
+        $option->is_default = false;
+        $option->save();
+    }
+
+    private function appendAvailabilityToProperties($properties)
+    {
+        $propertyIds = $properties->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $availabilitySummaries = $this->unitAvailabilityService->getPropertySummaries($propertyIds, getOwnerUserId());
+        $roomSummaries = PropertyUnit::query()
+            ->whereIn('property_id', $propertyIds)
+            ->whereNull('deleted_at')
+            ->selectRaw('property_id, COALESCE(SUM(bedroom), 0) as rooms')
+            ->groupBy('property_id')
+            ->pluck('rooms', 'property_id');
+        $maintainerSummaries = DB::table('maintainers')
+            ->whereIn('property_id', $propertyIds)
+            ->selectRaw('property_id, COUNT(DISTINCT id) as total')
+            ->groupBy('property_id')
+            ->pluck('total', 'property_id');
+
+        foreach ($properties as $property) {
+            $summary = $availabilitySummaries->get((int) $property->id, [
+                'available_unit' => 0,
+                'occupied_unit' => 0,
+                'full_unit' => 0,
+                'partial_unit' => 0,
+                'vacant_unit' => 0,
+                'on_hold_unit' => 0,
+                'off_market_unit' => 0,
+                'total_tenant' => 0,
+            ]);
+
+            foreach ($summary as $key => $value) {
+                $property->setAttribute($key, $value);
+            }
+            $property->setAttribute('address', $property->propertyDetail?->address);
+            $property->setAttribute('rooms', (int) ($roomSummaries[$property->id] ?? 0));
+            $property->setAttribute('total_maintainers', (int) ($maintainerSummaries[$property->id] ?? 0));
+        }
+
+        return $properties->makeHidden(['updated_at', 'created_at', 'deleted_at']);
+    }
+
+    private function getPropertyFinancialSummary(int $propertyId): object
+    {
+        $assignmentQuery = TenantUnitAssignment::query()
+            ->join('tenants', 'tenant_unit_assignments.tenant_id', '=', 'tenants.id')
+            ->join('users', 'tenants.user_id', '=', 'users.id')
+            ->whereNull('users.deleted_at')
+            ->where('tenant_unit_assignments.property_id', $propertyId)
+            ->where('tenants.owner_user_id', getOwnerUserId())
+            ->where('tenants.status', TENANT_STATUS_ACTIVE);
+
+        if ($this->unitAvailabilityService->supportsTemporalAssignments()) {
+            $assignmentQuery->where('tenant_unit_assignments.is_current', true);
+        }
+
+        $tenantFinancialQuery = $assignmentQuery
+            ->selectRaw(
+                'tenant_unit_assignments.tenant_id,
+                MAX(tenants.general_rent) as general_rent,
+                MAX(tenants.security_deposit) as security_deposit,
+                MAX(tenants.late_fee) as late_fee'
+            )
+            ->groupBy('tenant_unit_assignments.tenant_id');
+
+        return DB::query()
+            ->fromSub($tenantFinancialQuery, 'tenant_financial_summary')
+            ->selectRaw(
+                'COUNT(*) as total_tenant,
+                COALESCE(AVG(general_rent), 0) as avg_general_rent,
+                COALESCE(SUM(security_deposit), 0) as total_security_deposit,
+                COALESCE(SUM(late_fee), 0) as total_late_fee'
+            )
+            ->first();
+    }
+
+    private function nullableNumeric($value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return is_numeric($value) ? (float) $value : null;
+    }
+
+    private function nullableInteger($value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return is_numeric($value) ? (int) $value : null;
+    }
+
+    private function normalizePublicWebsiteMetadata(Property $property): void
+    {
+        if (! $property->is_public) {
+            return;
+        }
+
+        $didChange = false;
+
+        $resolvedSlug = $this->resolvePublicSlug($property->name, $property->public_slug, $property->id);
+        if ($property->public_slug !== $resolvedSlug) {
+            $property->public_slug = $resolvedSlug;
+            $didChange = true;
+        }
+
+        $resolvedSummary = $this->resolvePublicSummary($property->public_summary, $property->description, $property->name);
+        if ($property->public_summary !== $resolvedSummary) {
+            $property->public_summary = $resolvedSummary;
+            $didChange = true;
+        }
+
+        if (is_null($property->public_sort_order)) {
+            $property->public_sort_order = 0;
+            $didChange = true;
+        }
+
+        if ($didChange) {
+            $property->save();
+        }
+    }
+
+    private function normalizePublicOptionOrderingAndDefault(Property $property): void
+    {
+        if (! $property->is_public) {
+            return;
+        }
+
+        $activeOptions = PublicPropertyOption::query()
+            ->where('property_id', $property->id)
+            ->where('status', ACTIVE)
+            ->orderByRaw('CASE WHEN property_unit_id IS NULL THEN 0 ELSE 1 END')
+            ->orderBy('property_unit_id')
+            ->orderBy('id')
+            ->get();
+
+        if ($activeOptions->isEmpty()) {
+            return;
+        }
+
+        foreach ($activeOptions->values() as $index => $option) {
+            $expectedOrder = $index;
+            if ((int) $option->sort_order !== $expectedOrder) {
+                $option->sort_order = $expectedOrder;
+                $option->save();
+            }
+        }
+
+        $defaultOption = $activeOptions
+            ->sort(function (PublicPropertyOption $left, PublicPropertyOption $right) {
+                $leftMonthly = $left->monthly_rate ?? INF;
+                $rightMonthly = $right->monthly_rate ?? INF;
+
+                if ($leftMonthly !== $rightMonthly) {
+                    return $leftMonthly <=> $rightMonthly;
+                }
+
+                $leftNightly = $left->nightly_rate ?? INF;
+                $rightNightly = $right->nightly_rate ?? INF;
+
+                if ($leftNightly !== $rightNightly) {
+                    return $leftNightly <=> $rightNightly;
+                }
+
+                return $left->id <=> $right->id;
+            })
+            ->first();
+
+        PublicPropertyOption::query()
+            ->where('property_id', $property->id)
+            ->update(['is_default' => false]);
+
+        if ($defaultOption) {
+            $defaultOption->is_default = true;
+            $defaultOption->save();
+        }
+    }
+
+    private function resolvePublicSlug(string $propertyName, ?string $requestedSlug, ?int $propertyId = null): string
+    {
+        $baseSlug = Str::slug(trim((string) $requestedSlug) ?: $propertyName) ?: 'property';
+        $slug = $baseSlug;
+        $suffix = 2;
+
+        while (
+            Property::query()
+                ->where('public_slug', $slug)
+                ->when($propertyId, fn ($query) => $query->where('id', '!=', $propertyId))
+                ->exists()
+        ) {
+            $slug = "{$baseSlug}-{$suffix}";
+            $suffix++;
+        }
+
+        return $slug;
+    }
+
+    private function resolvePublicSummary(?string $requestedSummary, ?string $description, string $propertyName): string
+    {
+        $summary = trim((string) $requestedSummary);
+
+        if ($summary !== '') {
+            return $summary;
+        }
+
+        $fallbackDescription = trim((string) $description);
+
+        return $fallbackDescription !== '' ? $fallbackDescription : $propertyName;
+    }
+
     public function getUnitId(){
 
         return PropertyUnit::all();

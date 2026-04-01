@@ -32,15 +32,16 @@ class ProfileRequest extends FormRequest
             'first_name' => 'required|max:191',
             'last_name' => 'required|max:191',
             'email' => 'required|email|max:191|unique:users,email,' . $authId,
-            'contact_number' => 'bail|numeric|unique:users,contact_number,' . $authId,
+            'contact_number' => 'nullable|string|max:191|unique:users,contact_number,' . $authId,
             'date_of_birth' => 'nullable|date',
             'gender' => 'nullable|in:male,female,other',
+            'emergency_contact' => 'nullable|string|max:191',
         ];
     }
 
     public function failedValidation(Validator $validator)
     {
-        if ($this->header('accept') == "application/json") {
+        if ($this->expectsJson()) {
             $error = '';
             if ($validator->fails()) {
                 $error = $validator->errors()->first();

@@ -110,13 +110,15 @@ class TicketService
     {
         $tickets = Ticket::query()
             ->where('unit_id', $id)
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
             ->get();
         foreach ($tickets as $ticket) {
             foreach ($ticket->attachments as $attachment) {
                 $attachment->image = assetUrl($attachment->folder_name . '/' . $attachment->file_name);
             }
         }
-        return $tickets?->makeHidden(['created_at', 'updated_at', 'deleted_at', 'owner_user_id']);
+        return $tickets?->makeHidden(['deleted_at', 'owner_user_id']);
     }
 
     public function searchByUnitId($request, $unit_id)
@@ -161,7 +163,7 @@ class TicketService
         foreach ($ticket->attachments as $attachment) {
             $attachment->image = assetUrl($attachment->folder_name . '/' . $attachment->file_name);
         }
-        return $ticket?->makeHidden(['created_at', 'updated_at', 'deleted_at', 'owner_user_id']);
+        return $ticket?->makeHidden(['deleted_at', 'owner_user_id']);
     }
 
     public function getRepliesByTicketId($id)
@@ -170,13 +172,14 @@ class TicketService
             ->join('users', 'ticket_replies.user_id', '=', 'users.id')
             ->select('ticket_replies.*', 'users.first_name', 'users.last_name', 'users.role')
             ->where('ticket_replies.ticket_id', $id)
+            ->orderBy('ticket_replies.id')
             ->get();
         foreach ($replies as $reply) {
             foreach ($reply->attachments as $attachment) {
                 $attachment->image = assetUrl($attachment->folder_name . '/' . $attachment->file_name);
             }
         }
-        return $replies?->makeHidden(['created_at', 'updated_at', 'deleted_at']);
+        return $replies?->makeHidden(['deleted_at']);
     }
 
     public function store($request)

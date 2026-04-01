@@ -86,7 +86,13 @@ class LoginController extends Controller
             if (isset($user) && ($user->role == USER_ROLE_OWNER) || ($user->role == USER_ROLE_TEAM_MEMBER)) {
                 return redirect()->route('owner.dashboard');
             } elseif (isset($user) && ($user->role == USER_ROLE_TENANT)) {
-                if (!is_null($user->tenant->property_id) && !is_null($user->tenant->property_id)) {
+                $tenant = $user->tenant;
+                if (
+                    !is_null($tenant) &&
+                    (int) $tenant->status === TENANT_STATUS_ACTIVE &&
+                    !is_null($tenant->property_id) &&
+                    !is_null($tenant->unit_id)
+                ) {
                     return redirect()->route('tenant.dashboard');
                 } else {
                     Auth::logout();

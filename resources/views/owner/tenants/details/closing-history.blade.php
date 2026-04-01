@@ -53,7 +53,7 @@
                                             <div class="account-settings-title border-bottom mb-20 pb-20">
                                                 <div class="row align-items-center">
                                                     <div class="col-md-6">
-                                                        <h4>{{ __('Closing History') }}</h4>
+                                                        <h4>{{ __('Move-Out History') }}</h4>
                                                     </div>
                                                 </div>
                                             </div>
@@ -61,7 +61,7 @@
                                             <div class="account-settings-info-box">
                                                 <div class="row account-settings-info-item">
                                                     <div class="col-md-4 col-lg-4 col-xl-4 col-xxl-4">
-                                                        <p class="color-heading">{{ __('Closing Refund Amount') }}:</p>
+                                                        <p class="color-heading">{{ __('Move-Out Refund Amount') }}:</p>
                                                     </div>
                                                     <div class="col-md-6 col-lg-6 col-xl-6 col-xxl-4">
                                                         <p>{{ $tenant->close_refund_amount }}</p>
@@ -69,7 +69,7 @@
                                                 </div>
                                                 <div class="row account-settings-info-item">
                                                     <div class="col-md-4 col-lg-4 col-xl-4 col-xxl-4">
-                                                        <p class="color-heading">{{ __('Closing Charge') }}:</p>
+                                                        <p class="color-heading">{{ __('Move-Out Charge') }}:</p>
                                                     </div>
                                                     <div class="col-md-6 col-lg-6 col-xl-6 col-xxl-4">
                                                         <p>{{ $tenant->close_charge }}</p>
@@ -77,7 +77,7 @@
                                                 </div>
                                                 <div class="row account-settings-info-item">
                                                     <div class="col-md-4 col-lg-4 col-xl-4 col-xxl-4">
-                                                        <p class="color-heading">{{ __('Closing Date') }}:</p>
+                                                        <p class="color-heading">{{ __('Move-Out Date') }}:</p>
                                                     </div>
                                                     <div class="col-md-6 col-lg-6 col-xl-6 col-xxl-4">
                                                         <p>{{ $tenant->close_date }}</p>
@@ -85,7 +85,7 @@
                                                 </div>
                                                 <div class="row account-settings-info-item">
                                                     <div class="col-md-4 col-lg-4 col-xl-4 col-xxl-4">
-                                                        <p class="color-heading">{{ __('Closing Reason') }}:</p>
+                                                        <p class="color-heading">{{ __('Move-Out Reason') }}:</p>
                                                     </div>
                                                     <div class="col-md-6 col-lg-6 col-xl-6 col-xxl-4">
                                                         <p>{{ $tenant->close_reason }}</p>

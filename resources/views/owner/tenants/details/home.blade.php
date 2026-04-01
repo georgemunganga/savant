@@ -95,6 +95,8 @@
                                                                                             class="ri-checkbox-circle-fill me-1 "></i>
                                                                                         @if ($tenant->status == TENANT_STATUS_ACTIVE)
                                                                                             {{ __('Currnetly Tenant') }}
+                                                                                        @elseif ($tenant->status == TENANT_STATUS_CLOSE)
+                                                                                            {{ __('Archived Tenant') }}
                                                                                         @else
                                                                                             {{ __('Deactivate Tenant') }}
                                                                                         @endif

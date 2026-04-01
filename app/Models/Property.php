@@ -42,6 +42,17 @@ class Property extends Model
         return $this->hasMany(PropertyUnit::class, 'property_id', 'id')->select('id', 'unit_name', 'property_id');
     }
 
+    public function publicOptions(): HasMany
+    {
+        return $this->hasMany(PublicPropertyOption::class, 'property_id', 'id');
+    }
+
+    public function wholePublicOption(): HasOne
+    {
+        return $this->hasOne(PublicPropertyOption::class, 'property_id', 'id')
+            ->whereNull('property_unit_id');
+    }
+
     public function getThumbnailImageAttribute()
     {
         if ($this->fileAttachThumbnail) {

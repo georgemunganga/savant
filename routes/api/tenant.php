@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\Tenant\DashboardController;
+use App\Http\Controllers\Api\Tenant\ChatController;
 use App\Http\Controllers\Api\Tenant\DocumentController;
 use App\Http\Controllers\Api\Tenant\InformationController;
 use App\Http\Controllers\Api\Tenant\InvoiceController;
@@ -36,4 +37,8 @@ Route::group(['middleware' => ['auth:api', 'tenant'], 'prefix' => 'tenant'], fun
     Route::get('ticket-status-change', [TicketController::class, 'statusChange']);
     Route::get('ticket-delete/{id}', [TicketController::class, 'delete']);
     Route::get('ticket-topics', [TicketController::class, 'topics']);
+
+    // chat
+    Route::get('chats', [ChatController::class, 'index']);
+    Route::post('chats', [ChatController::class, 'store']);
 });

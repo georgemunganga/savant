@@ -29,7 +29,7 @@ return new class extends Migration
 
         DB::statement("
             INSERT INTO tenant_unit_assignments (tenant_id, property_id, unit_id, created_at, updated_at)
-            SELECT t.id, t.property_id, t.unit_id, NOW(), NOW()
+            SELECT t.id, t.property_id, t.unit_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
             FROM tenants t
             WHERE t.property_id IS NOT NULL AND t.unit_id IS NOT NULL AND t.deleted_at IS NULL
         ");

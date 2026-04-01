@@ -27,6 +27,26 @@ class Tenant
                 abort('403');
             }
         }
+
+        $tenant = Auth::user()->tenant;
+        if (
+            Auth::user()->status != USER_STATUS_ACTIVE ||
+            is_null($tenant) ||
+            (int) $tenant->status !== TENANT_STATUS_ACTIVE ||
+            is_null($tenant->property_id) ||
+            is_null($tenant->unit_id)
+        ) {
+            if ($request->wantsJson()) {
+                return $this->error([], __('Your account is inactive. Please contact with admin'));
+            }
+
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return redirect('login')->with('error', __('Your account is inactive. Please contact with admin'));
+        }
+
         return $next($request);
     }
 }

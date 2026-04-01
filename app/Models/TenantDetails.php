@@ -9,5 +9,5 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class TenantDetails extends Model
 {
     use HasFactory, SoftDeletes;
-    protected $fillable = ['tenant_id'];
+    protected $fillable = ['tenant_id', 'emergency_contact'];
 }

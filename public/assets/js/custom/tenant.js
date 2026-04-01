@@ -46,6 +46,71 @@ function stepChange(data) {
 
 // State selector
 var thisStateSelector;
+var unitsCollection = [];
+
+function getUnitOptionLabel(unit) {
+    var details = [];
+
+    if (unit.occupancy_label) {
+        details.push(unit.occupancy_label);
+    }
+    if (unit.availability_label) {
+        details.push(unit.availability_label);
+    }
+
+    return details.length ? unit.name + ' (' + details.join(' · ') + ')' : unit.name;
+}
+
+function renderUnitOptions(units, selectedUnitId) {
+    var options = ['<option value="">--Select Unit--</option>'];
+
+    units.forEach(function (unit) {
+        var isSelected = String(selectedUnitId || '') === String(unit.id);
+        var isDisabled = !isSelected && unit.is_available_for_assignment === false;
+        options.push(
+            '<option value="' + unit.id + '"' +
+            (isSelected ? ' selected' : '') +
+            (isDisabled ? ' disabled' : '') +
+            '>' + getUnitOptionLabel(unit) + '</option>'
+        );
+    });
+
+    return options.join('');
+}
+
+function resetUnitDetails() {
+    $('#unit_name').html('N/A');
+    $('#unit_availability_label').html('Select a unit');
+    $('#unit_occupancy_label').html('Capacity information will appear here');
+    $('#general_rent').val(0);
+    $('#incident_receipt').val(0);
+    $('#late_fee').val(0);
+    $('#security_deposit').val(0);
+}
+
+function updateUnitDetails(unit) {
+    if (!unit) {
+        resetUnitDetails();
+        return;
+    }
+
+    $('#unit_name').html(unit.name || 'N/A');
+    $('#unit_availability_label').html(unit.availability_label || 'Unavailable');
+    $('#unit_occupancy_label').html(unit.occupancy_label || 'Capacity information unavailable');
+    $('#general_rent').val(unit.general_rent || 0);
+    $('#incident_receipt').val(unit.incident_receipt || 0);
+    if (unit.rent_type == 1) {
+        $('#payment_due_on_date').val(unit.monthly_due_day || '');
+    }
+    else {
+        $('#payment_due_on_date').val(unit.yearly_due_day || '');
+    }
+    $('#late_fee_type').val(unit.late_fee_type || 0);
+    $('#late_fee').val(unit.late_fee || 0);
+    $('#security_deposit_type').val(unit.security_deposit_type || 0);
+    $('#security_deposit').val(unit.security_deposit || 0);
+}
+
 // Get unit
 $(document).on('change', '.property_id', function () {
     thisStateSelector = $(this);
@@ -57,25 +122,21 @@ function getPropertyWithUnitsRes(response) {
     if (response.data.units) {
         $('#propertyInformation').removeClass('d-none')
         unitsCollection = response.data.units;
-        var unitOptionsHtml = response.data.units.map(function (opt) {
-            return '<option value="' + opt.id + '">' + opt.name + '</option>';
-        }).join('');
-        var unitsHtml = '<option value="">--Select Unit--</option>' + unitOptionsHtml
-        $('.unit_id').html(unitsHtml);
+        var currentUnitId = $('.unit_id').val();
+        $('.unit_id').html(renderUnitOptions(response.data.units, currentUnitId));
         $(".propertyImg").attr("src", response.data.image);
         $('.property-item-title').find('a').html(response.data.name)
         var propertyShowRoute = $('#propertyShowRoute').val();
         $('.property-item-title').find('a').attr('href', propertyShowRoute.replace("0", response.data.id))
         $('.property-item-address').find('p').html(response.data.address)
-
-        $('#general_rent').val(0);
-        $('#incident_receipt').val(0);
-        $('#late_fee').val(0);
-        $('#security_deposit').val(0);
+        updateUnitDetails(unitsCollection.find(function (unit) {
+            return String(unit.id) === String($('.unit_id').val());
+        }));
     } else {
         unitsCollection = [];
         $('#propertyInformation').addClass('d-none')
         $('.unit_id').html('<option value="">--Select Unit--</option>');
+        resetUnitDetails();
     }
 }
 
@@ -83,19 +144,7 @@ function getPropertyWithUnitsRes(response) {
 $(document).on('change', '#unitId', function () {
     var id = $(this).val();
     var unit = unitsCollection.find(x => x.id == id);
-    $('#unit_name').html(unit.name);
-    $('#general_rent').val(unit.general_rent);
-    $('#incident_receipt').val(unit.incident_receipt);
-    if (unit.rent_type == 1) {
-        $('#payment_due_on_date').val(unit.monthly_due_day);
-    }
-    else {
-        $('#payment_due_on_date').val(unit.yearly_due_day);
-    }
-    $('#late_fee_type').val(unit.late_fee_type);
-    $('#late_fee').val(unit.late_fee);
-    $('#security_deposit_type').val(unit.security_deposit_type);
-    $('#security_deposit').val(unit.security_deposit);
+    updateUnitDetails(unit);
 });
 
 // Document remove

@@ -23,8 +23,14 @@ class ProfileController extends Controller
     {
         if (auth()->user()->role == USER_ROLE_TENANT) {
             $data['tenant'] = Tenant::where('user_id', auth()->id())->select(['id', 'job', 'family_member', 'gender', 'date_of_birth', 'tenant_type'])->first();
-            $data['details'] = TenantDetails::where('tenant_id', $data['tenant']->id)->first();
+            $data['details'] = TenantDetails::firstOrCreate(['tenant_id' => $data['tenant']->id]);
             $data['details']?->makeHidden(['created_at', 'updated_at', 'deleted_at']);
+            $data['webapp'] = [
+                'fullName' => trim(auth()->user()->first_name . ' ' . auth()->user()->last_name),
+                'email' => auth()->user()->email,
+                'phone' => (string) (auth()->user()->contact_number ?? ''),
+                'emergencyContact' => (string) ($data['details']->emergency_contact ?? ''),
+            ];
         } elseif (auth()->user()->role == USER_ROLE_OWNER) {
             $data['owner'] = Owner::query()
                 ->leftJoin('file_managers', 'owners.logo_id', '=', 'file_managers.id')
@@ -32,6 +38,12 @@ class ProfileController extends Controller
                 ->select(['owners.print_name', 'owners.print_address', 'owners.print_contact', 'file_managers.folder_name', 'file_managers.file_name'])
                 ->first();
             $data['owner']->print_logo = getFileUrl($data['owner']->folder_name, $data['owner']->file_name);
+            $data['webapp'] = [
+                'fullName' => trim(auth()->user()->first_name . ' ' . auth()->user()->last_name),
+                'email' => auth()->user()->email,
+                'phone' => (string) (auth()->user()->contact_number ?? ''),
+                'emergencyContact' => '',
+            ];
         }
         $data['image'] = auth()->user()->image;
         $data['user'] = auth()->user()?->makeHidden(['id', 'email_verified_at', 'created_by', 'verify_token', 'otp', 'otp_expire', 'deleted_at', 'created_at', 'updated_at']);
@@ -48,9 +60,7 @@ class ProfileController extends Controller
             $user->contact_number = $request->contact_number;
             $user->date_of_birth = $request->date_of_birth;
             $user->nid_number = $request->nid_number;
-            if (auth()->user()->role == USER_ROLE_ADMIN || auth()->user()->role == USER_ROLE_OWNER) {
-                $user->email = $request->email;
-            }
+            $user->email = $request->email;
             $user->save();
 
             if (auth()->user()->role == USER_ROLE_TENANT) {
@@ -64,7 +74,7 @@ class ProfileController extends Controller
                 }
                 $tenant->save();
 
-                $details = TenantDetails::where('tenant_id', $tenant->id)->first();
+                $details = TenantDetails::firstOrCreate(['tenant_id' => $tenant->id]);
                 $details->permanent_country_id = $request->permanent_country_id;
                 $details->permanent_state_id = $request->permanent_state_id;
                 $details->permanent_city_id = $request->permanent_city_id;
@@ -76,6 +86,7 @@ class ProfileController extends Controller
                 $details->previous_city_id = $request->previous_city_id;
                 $details->previous_address = $request->previous_address;
                 $details->previous_zip_code = $request->previous_zip_code;
+                $details->emergency_contact = $request->emergency_contact;
                 $details->save();
             }
             /*File Manager Call upload*/
