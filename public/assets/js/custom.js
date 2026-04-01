@@ -1,16 +1,69 @@
 !(function (n) {
     "use strict";
 
+    function cleanupModalShellState() {
+        var visibleModals = document.querySelectorAll('.modal.show').length;
+        var backdrops = n('.modal-backdrop');
+
+        if (!visibleModals) {
+            backdrops.remove();
+            n('body').removeClass('modal-open').css({
+                overflow: '',
+                paddingRight: ''
+            });
+            return;
+        }
+
+        if (backdrops.length > 1) {
+            backdrops.slice(0, backdrops.length - 1).remove();
+        }
+    }
+
+    function hidePreloader(forceImmediate) {
+        var preloader = n('#preloader');
+        if (!preloader.length || preloader.data('dismissed')) {
+            return;
+        }
+
+        preloader.data('dismissed', true);
+        n('#preloaderInner').stop(true, true).fadeOut(forceImmediate ? 0 : undefined);
+
+        if (forceImmediate) {
+            preloader.stop(true, true).remove();
+            return;
+        }
+
+        preloader
+            .delay(350)
+            .fadeOut('slow', function () {
+                n(this).remove();
+            });
+    }
+
     // Preloader Start
     $(window).on('load',function () {
-        $('#preloaderInner').fadeOut();
-        $('#preloader')
-            .delay(350)
-            .fadeOut('slow');
-        $('body')
-            .delay(350)
+        hidePreloader(false);
+        cleanupModalShellState();
     });
     // Preloader End
+
+    n(document).ready(function () {
+        cleanupModalShellState();
+
+        // Failsafe for environments where the window load event is delayed or skipped.
+        window.setTimeout(function () {
+            hidePreloader(true);
+            cleanupModalShellState();
+        }, 2500);
+    });
+
+    n(document).on('shown.bs.modal hidden.bs.modal', '.modal', function () {
+        window.setTimeout(cleanupModalShellState, 0);
+    });
+
+    window.addEventListener('pageshow', function () {
+        cleanupModalShellState();
+    });
 
   /*---------------------------------
     Top Menu / Side Menu JS
