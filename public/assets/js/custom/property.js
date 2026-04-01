@@ -34,6 +34,7 @@ function stepChange(response) {
             }
         }
         datePicker()
+        initPublicWebsiteOptionState()
         if (response.data.step == 5) {
             thumbmnilImage()
             dropzone()
@@ -83,6 +84,24 @@ function datePicker() {
     $(".datepicker").datepicker({
         dateFormat: "yy-mm-dd",
         duration: "fast"
+    });
+}
+
+function toggleWholePropertyOptionFields() {
+    var enabled = $('#enable_whole_property_option').is(':checked');
+    $('.js-whole-property-option-field').prop('disabled', !enabled);
+}
+
+function toggleUnitPublicOptionFields(selectElement) {
+    var row = $(selectElement).closest('.row');
+    var enabled = $(selectElement).val() === '1';
+    row.find('.js-public-unit-field').prop('disabled', !enabled);
+}
+
+function initPublicWebsiteOptionState() {
+    toggleWholePropertyOptionFields();
+    $('.js-public-unit-enabled').each(function () {
+        toggleUnitPublicOptionFields(this);
     });
 }
 
@@ -204,6 +223,7 @@ function getPropertyInformation(property_id) {
 function getPropertyInformationRes(response) {
     $('#addHtmlForm').html(response.data)
     datePicker()
+    initPublicWebsiteOptionState()
 }
 
 function getLocation(property_id) {
@@ -214,6 +234,7 @@ function getLocation(property_id) {
 function getLocationRes(response) {
     $('#addHtmlForm').html(response.data.view)
     datePicker()
+    initPublicWebsiteOptionState()
     if (response.data.property.property_detail) {
         country_id = response.data.property.property_detail.country_id;
         state_id = response.data.property.property_detail.state_id;
@@ -235,9 +256,11 @@ function getUnitByPropertyId(property_id) {
 function getUnitRes(response) {
     $('#addHtmlForm').html(response.data.view)
     datePicker()
+    initPublicWebsiteOptionState()
 }
 function resImgDoc(response) {
     $('#addHtmlForm').html(response.data.view)
+    initPublicWebsiteOptionState()
     dropzone();
 }
 
@@ -253,8 +276,17 @@ function getPropertyImageDoc(property_id) {
 function getRentChargeRes(response) {
     $('#addHtmlForm').html(response.data.view)
     datePicker()
+    initPublicWebsiteOptionState()
     dropzone()
 }
+
+$(document).on("change", "#enable_whole_property_option", function () {
+    toggleWholePropertyOptionFields();
+})
+
+$(document).on("change", ".js-public-unit-enabled", function () {
+    toggleUnitPublicOptionFields(this);
+})
 
 $(document).on("change", "#sameUnitRent", function () {
     if ($(this).prop('checked')) {

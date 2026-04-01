@@ -193,10 +193,10 @@
                         </div>
                     </div>
 
-                    <div class="row">
+                    <div class="row js-whole-property-option-fields">
                         <div class="col-md-3 mb-25">
                             <label class="label-text-title color-heading font-medium mb-2">Rental Kind <span class="text-danger">*</span></label>
-                            <select class="form-control" name="whole_property_option[rental_kind]">
+                            <select class="form-control js-whole-property-option-field" name="whole_property_option[rental_kind]">
                                 @foreach (['whole_property' => 'Whole Property', 'whole_unit' => 'Whole Unit', 'private_room' => 'Private Room', 'shared_space' => 'Shared Space'] as $value => $label)
                                     <option value="{{ $value }}"
                                         {{ @$wholePublicOption->rental_kind === $value ? 'selected' : ($value === 'whole_property' ? 'selected' : '') }}>
@@ -207,25 +207,25 @@
                         </div>
                         <div class="col-md-2 mb-25">
                             <label class="label-text-title color-heading font-medium mb-2">Monthly Rate <span class="text-danger">*</span></label>
-                            <input type="number" min="0" step="any" class="form-control"
+                            <input type="number" min="0" step="any" class="form-control js-whole-property-option-field"
                                 name="whole_property_option[monthly_rate]"
                                 value="{{ @$wholePublicOption->monthly_rate }}">
                         </div>
                         <div class="col-md-2 mb-25">
                             <label class="label-text-title color-heading font-medium mb-2">Nightly Rate <span class="text-danger">*</span></label>
-                            <input type="number" min="0" step="any" class="form-control"
+                            <input type="number" min="0" step="any" class="form-control js-whole-property-option-field"
                                 name="whole_property_option[nightly_rate]"
                                 value="{{ @$wholePublicOption->nightly_rate }}">
                         </div>
                         <div class="col-md-2 mb-25">
                             <label class="label-text-title color-heading font-medium mb-2">Max Guests</label>
-                            <input type="number" min="1" class="form-control"
+                            <input type="number" min="1" class="form-control js-whole-property-option-field"
                                 name="whole_property_option[max_guests]"
                                 value="{{ @$wholePublicOption->max_guests }}">
                         </div>
                         <div class="col-md-5 mb-25 d-flex align-items-end">
                             <small class="text-muted">
-                                The website will automatically choose the default property option based on the lowest rate.
+                                Turn this on first if you want these values to be saved and shown on the website.
                             </small>
                         </div>
                     </div>

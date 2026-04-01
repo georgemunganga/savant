@@ -87,7 +87,7 @@ class PropertyService
 
     public function getById($id)
     {
-        return Property::where('owner_user_id', getOwnerUserId())->findOrFail($id);
+        return $this->getEditablePropertyById($id);
     }
 
     public function getDetailsById($id)
@@ -567,7 +567,7 @@ class PropertyService
         try {
             $response = [];
             if ($request->property_id) {
-                $response['property'] = Property::where('owner_user_id', getOwnerUserId())->findOrFail($request->property_id);
+                $response['property'] = $this->getEditablePropertyById($request->property_id);
             }
 
             $view = view('owner.property.partial.render-property-information', $response)->render();
@@ -582,7 +582,7 @@ class PropertyService
     public function getLocation($request)
     {
         try {
-            $response['property'] = Property::where('owner_user_id', getOwnerUserId())->findOrFail($request->property_id);
+            $response['property'] = $this->getEditablePropertyById($request->property_id);
             $country_file = public_path('file/countries.csv');
             $response['countries'] = csvToArray($country_file);
             $response['view'] = view('owner.property.partial.render-location', $response)->render();
@@ -595,7 +595,7 @@ class PropertyService
     public function getUnitByPropertyId($request)
     {
         try {
-            $response['property'] = Property::where('owner_user_id', getOwnerUserId())->findOrFail($request->property_id);
+            $response['property'] = $this->getEditablePropertyById($request->property_id);
             $response['propertyUnits'] = PropertyUnit::where('property_id', $response['property']->id)->get();
             $response['view'] = view('owner.property.partial.render-unit', $response)->render();
             return $this->success($response);
@@ -625,7 +625,7 @@ class PropertyService
     public function getRentCharge($request)
     {
         try {
-            $response['property'] = Property::where('owner_user_id', getOwnerUserId())->findOrFail($request->property_id);
+            $response['property'] = $this->getEditablePropertyById($request->property_id);
             $response['propertyUnits'] = PropertyUnit::where('property_id', $response['property']->id)->get();
             $response['propertyUnitIds'] = PropertyUnit::where('property_id', $response['property']->id)->pluck('id')->toArray();
             $response['publicOptionsByUnit'] = PublicPropertyOption::query()
@@ -805,6 +805,14 @@ class PropertyService
         $option->sort_order = 0;
         $option->is_default = false;
         $option->save();
+    }
+
+    private function getEditablePropertyById($id): Property
+    {
+        return Property::query()
+            ->with(['propertyDetail', 'wholePublicOption'])
+            ->where('owner_user_id', getOwnerUserId())
+            ->findOrFail($id);
     }
 
     private function syncUnitPublicOption(Property $property, PropertyUnit $unit, $request, int $index): void
