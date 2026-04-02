@@ -25,6 +25,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Throwable;
 
 class AuthController extends Controller
 {
@@ -64,6 +65,29 @@ class AuthController extends Controller
     {
         return !is_null($tenant)
             && in_array((int) $tenant->status, [TENANT_STATUS_DRAFT, TENANT_STATUS_ACTIVE], true);
+    }
+
+    private function issueAccessToken(User $user): string
+    {
+        try {
+            return $user->createToken(Str::random(40))->accessToken;
+        } catch (Throwable $e) {
+            $passportPrivateKey = (string) config('passport.private_key');
+            $passportPublicKey = (string) config('passport.public_key');
+
+            $privateKeyMissing = !Str::contains($passportPrivateKey, 'BEGIN') && !is_file($passportPrivateKey);
+            $publicKeyMissing = !Str::contains($passportPublicKey, 'BEGIN') && !is_file($passportPublicKey);
+
+            if ($privateKeyMissing || $publicKeyMissing) {
+                throw new Exception(__('API login is unavailable because Passport keys are missing. Run passport:keys on the server.'));
+            }
+
+            if (Str::contains($e->getMessage(), ['Personal access client not found', 'Invalid key supplied'])) {
+                throw new Exception(__('API login is unavailable because Passport is not configured correctly on the server.'));
+            }
+
+            throw new Exception($e->getMessage(), (int) $e->getCode(), $e);
+        }
     }
 
     private function passwordResetError(string $message, int $status = 422)
@@ -251,14 +275,14 @@ class AuthController extends Controller
                 } elseif (isset($user) && ($user->status == USER_STATUS_ACTIVE)) {
                     if (isset($user) && ($user->role == USER_ROLE_TENANT)) {
                         if ($this->tenantCanAccessPortal($user->tenant)) {
-                            $response['access_token'] = $user->createToken(Str::random(40))->accessToken;
+                            $response['access_token'] = $this->issueAccessToken($user);
                             $response['user'] = $this->authUserPayload($user);
                             $message = __(LOGIN_SUCCESSFUL);
                         } else {
                             throw new Exception(__('Your account is inactive. Please contact with admin'));
                         }
                     } else {
-                        $response['access_token'] = $user->createToken(Str::random(40))->accessToken;
+                        $response['access_token'] = $this->issueAccessToken($user);
                         $response['user'] = $this->authUserPayload($user);
                         $message = __(LOGIN_SUCCESSFUL);
                     }
