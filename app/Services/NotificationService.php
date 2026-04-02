@@ -14,7 +14,13 @@ class NotificationService
     {
         DB::beginTransaction();
         try {
-            $notification = Notification::where('id', $id)->where('user_id', auth()->id())->firstOrFail();
+            $notification = Notification::query()
+                ->where('id', $id)
+                ->where(function ($query) {
+                    $query->where('user_id', auth()->id())
+                        ->orWhereNull('user_id');
+                })
+                ->firstOrFail();
             $notification->is_seen = ACTIVE;
             $notification->save();
             DB::commit();

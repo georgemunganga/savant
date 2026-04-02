@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Tenant;
 
 use App\Http\Controllers\Controller;
+use App\Models\Order;
 use App\Services\GatewayService;
 use App\Services\InvoiceService;
 use App\Services\TenantService;
@@ -35,7 +36,45 @@ class InvoiceController extends Controller
         $data['invoice'] = $this->invoiceService->getByIdCheckTenantAuthId($id);
         $data['items'] = $this->invoiceService->getItemsByInvoiceId($id);
         $data['tenant'] = $this->tenantService->getDetailsById($data['invoice']->tenant_id);
-        $data['order'] = $this->invoiceService->getOrderById($data['invoice']->order_id);
+        $data['order'] = Order::query()
+            ->leftJoin('gateways', 'orders.gateway_id', '=', 'gateways.id')
+            ->leftJoin('file_managers', function ($join) {
+                $join->on('orders.deposit_slip_id', '=', 'file_managers.id')
+                    ->where('file_managers.origin_type', '=', 'App\Models\Order');
+            })
+            ->where('orders.id', $data['invoice']->order_id)
+            ->select([
+                'orders.*',
+                'gateways.title as gatewayTitle',
+                'gateways.slug as gatewaySlug',
+                'file_managers.folder_name',
+                'file_managers.file_name',
+            ])
+            ->first();
+
+        $lineItems = $data['items']->map(function ($item) {
+            return [
+                'title' => $item->description ?? __('Line Item'),
+                'amount' => (float) $item->amount + (float) ($item->tax_amount ?? 0),
+            ];
+        })->values();
+
+        $data['webapp'] = [
+            'id' => $data['invoice']->id,
+            'invoiceNo' => $data['invoice']->invoice_no ?? ('#' . $data['invoice']->id),
+            'period' => $data['invoice']->name ?: Carbon::parse($data['invoice']->due_date)->format('F Y'),
+            'dueDate' => Carbon::parse($data['invoice']->due_date)->format('Y-m-d'),
+            'amount' => (float) $data['invoice']->amount,
+            'status' => (int) $data['invoice']->status === INVOICE_STATUS_PAID ? 'PAID' : 'UNPAID',
+            'lineItems' => $lineItems,
+            'paymentMethod' => $data['order']->gatewayTitle ?? null,
+            'transactionId' => $data['order']->transaction_id ?? null,
+            'depositBy' => $data['order']->deposit_by ?? null,
+            'proofUrl' => !empty($data['order']?->folder_name) && !empty($data['order']?->file_name)
+                ? getFileUrl($data['order']->folder_name, $data['order']->file_name)
+                : null,
+        ];
+
         return $this->success($data);
     }
 
@@ -81,6 +120,13 @@ class InvoiceController extends Controller
                             'symbol' => $currency->symbol ?? null,
                         ];
                     })->values(),
+                ];
+            })->values(),
+            'banks' => collect($data['banks'])->map(function ($bank) {
+                return [
+                    'id' => $bank->id,
+                    'name' => $bank->name,
+                    'details' => $bank->details,
                 ];
             })->values(),
         ];

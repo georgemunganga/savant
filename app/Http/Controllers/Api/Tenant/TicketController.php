@@ -69,6 +69,8 @@ class TicketController extends Controller
 
     public function topics()
     {
-        return $data['topics'] = $this->ticketTopicService->getActiveAll();
+        return $this->success([
+            'topics' => $this->ticketTopicService->getActiveAll(),
+        ]);
     }
 }

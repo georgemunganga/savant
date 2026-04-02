@@ -1,17 +1,26 @@
 <?php
 
+use App\Http\Controllers\Api\Tenant\AccountController;
 use App\Http\Controllers\Api\Tenant\DashboardController;
 use App\Http\Controllers\Api\Tenant\ChatController;
 use App\Http\Controllers\Api\Tenant\DocumentController;
 use App\Http\Controllers\Api\Tenant\InformationController;
 use App\Http\Controllers\Api\Tenant\InvoiceController;
+use App\Http\Controllers\Api\Tenant\MaintenanceRequestController;
+use App\Http\Controllers\Api\Tenant\NoticeController;
+use App\Http\Controllers\Api\Tenant\NotificationController;
 use App\Http\Controllers\Api\Tenant\TicketController;
 use Illuminate\Support\Facades\Route;
 
 Route::group(['middleware' => ['auth:api', 'tenant.portal'], 'prefix' => 'tenant'], function () {
     Route::get('dashboard', [DashboardController::class, 'dashboard']);
+    Route::post('deactivation-request', [AccountController::class, 'requestDeactivation']);
+    Route::get('notifications', [NotificationController::class, 'index']);
+    Route::post('notifications/mark-all-read', [NotificationController::class, 'markAllRead']);
 
     Route::group(['middleware' => ['tenant.assigned']], function () {
+        Route::get('notices', [NoticeController::class, 'index']);
+
         // invoice
         Route::get('invoices', [InvoiceController::class, 'index']);
         Route::get('invoice-details/{id}', [InvoiceController::class, 'details']);
@@ -38,6 +47,13 @@ Route::group(['middleware' => ['auth:api', 'tenant.portal'], 'prefix' => 'tenant
         Route::get('ticket-status-change', [TicketController::class, 'statusChange']);
         Route::get('ticket-delete/{id}', [TicketController::class, 'delete']);
         Route::get('ticket-topics', [TicketController::class, 'topics']);
+
+        // maintenance
+        Route::get('maintenance-requests', [MaintenanceRequestController::class, 'index']);
+        Route::get('maintenance-request-details', [MaintenanceRequestController::class, 'getInfo']);
+        Route::post('maintenance-request-store', [MaintenanceRequestController::class, 'store']);
+        Route::delete('maintenance-request/{id}', [MaintenanceRequestController::class, 'delete']);
+        Route::get('maintenance-issues', [MaintenanceRequestController::class, 'issues']);
 
         // chat
         Route::get('chats', [ChatController::class, 'index']);
