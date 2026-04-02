@@ -3,6 +3,7 @@
 namespace App\Http;
 
 use App\Http\Middleware\Admin;
+use App\Http\Middleware\AssignedTenant;
 use App\Http\Middleware\CommonMiddleware;
 use App\Http\Middleware\IsFrontend;
 use App\Http\Middleware\Maintainer;
@@ -10,6 +11,7 @@ use App\Http\Middleware\Owner;
 use App\Http\Middleware\SaasModuleMiddleware;
 use App\Http\Middleware\TenancyMiddleware;
 use App\Http\Middleware\Tenant;
+use App\Http\Middleware\TenantPortal;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
 
 class Kernel extends HttpKernel
@@ -73,6 +75,8 @@ class Kernel extends HttpKernel
         'admin' => Admin::class,
         'owner' => Owner::class,
         'tenant' => Tenant::class,
+        'tenant.portal' => TenantPortal::class,
+        'tenant.assigned' => AssignedTenant::class,
         'tenancy' => TenancyMiddleware::class,
         'maintainer' => Maintainer::class,
         'common' => CommonMiddleware::class,

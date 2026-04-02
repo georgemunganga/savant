@@ -11,7 +11,6 @@ use App\Models\Tenant;
 use App\Models\TenantUnitAssignment;
 use App\Models\TenantDetails;
 use App\Models\User;
-use App\Services\SmsMail\MailService;
 use App\Traits\ResponseTrait;
 use Exception;
 use Illuminate\Http\Request;
@@ -25,7 +24,8 @@ class TenantService
     use ResponseTrait;
 
     public function __construct(
-        private readonly UnitHistoryService $unitHistoryService = new UnitHistoryService()
+        private readonly UnitHistoryService $unitHistoryService = new UnitHistoryService(),
+        private readonly TenantAccessService $tenantAccessService = new TenantAccessService()
     ) {
     }
 
@@ -401,6 +401,7 @@ class TenantService
         DB::beginTransaction();
         try {
             $id = $request->get('id', '');
+            $isCreate = $id == '';
             if ($id != '') {
                 $tenant = Tenant::where('owner_user_id', getOwnerUserId())->findOrFail($request->id);
                 $user = User::where('owner_user_id', getOwnerUserId())->findOrFail($tenant->user_id);
@@ -419,11 +420,11 @@ class TenantService
             $user->last_name = $request->last_name;
             $user->email = $request->email;
             $user->contact_number = $request->contact_number;
-            if ($request->password) {
-                $user->password = Hash::make($request->password);
+            if ($isCreate) {
+                $user->password = Hash::make(Str::random(40));
             }
             $user->role = USER_ROLE_TENANT;
-            $user->status = ACTIVE;
+            $user->status = USER_STATUS_ACTIVE;
             $user->owner_user_id = getOwnerUserId();
             $user->save();
 
@@ -432,8 +433,12 @@ class TenantService
             $tenant->owner_user_id = getOwnerUserId();
             $tenant->job = $request->job;
             $tenant->tenant_type = $request->tenant_type ?? 'person';
-            $tenant->gender = $request->gender;
-            $tenant->date_of_birth = $request->date_of_birth;
+            if (Schema::hasColumn('tenants', 'gender')) {
+                $tenant->gender = $request->gender;
+            }
+            if (Schema::hasColumn('tenants', 'date_of_birth')) {
+                $tenant->date_of_birth = $request->date_of_birth;
+            }
             $tenant->family_member = $request->family_member;
             $tenant->status = TENANT_STATUS_DRAFT;
             $tenant->save();
@@ -476,28 +481,8 @@ class TenantService
             /*End*/
 
             DB::commit();
-            if (getOption('send_email_status', 0) == ACTIVE) {
-                if ($id == '') {
-                    $emails = [$user->email];
-                    $subject = getOption('app_name') . ' ' . __('welcome you');
-                    $message = __('You have successfully been registered');
-                    $ownerUserId = getOwnerUserId();
-                    $password = $request->password;
-
-                    $mailService = new MailService;
-                    $template = EmailTemplate::where('owner_user_id', $ownerUserId)->where('category', EMAIL_TEMPLATE_SIGN_UP)->where('status', ACTIVE)->first();
-                    if ($template) {
-                        $customizedFieldsArray = [
-                            '{{email}}' => $user->email,
-                            '{{password}}' => $password,
-                            '{{app_name}}' => getOption('app_name')
-                        ];
-                        $content = getEmailTemplate($template->body, $customizedFieldsArray);
-                        $mailService->sendCustomizeMail($emails, $template->subject, $content);
-                    } else {
-                        $mailService->sendSignUpMail($emails, $subject, $message, $ownerUserId, $password);
-                    }
-                }
+            if ($isCreate && getOption('send_email_status', 0) == ACTIVE) {
+                $this->tenantAccessService->sendAccountSetupEmail($user->fresh(), getOwnerUserId());
             }
             $data = $tenant;
             $data->step = 'nextStep1';
@@ -515,6 +500,12 @@ class TenantService
         DB::beginTransaction();
         try {
             $tenant = Tenant::where('owner_user_id', getOwnerUserId())->findOrFail($request->id);
+            $assignmentChanged = $this->tenantAssignmentChanged($tenant, [
+                'property_id' => (int) $request->property_id,
+                'unit_id' => (int) $request->unit_id,
+                'lease_start_date' => $request->lease_start_date,
+                'lease_end_date' => $request->lease_end_date,
+            ]);
             $this->ensureUnitOccupancyLimit((int) $request->property_id, (int) $request->unit_id, (int) $tenant->id);
             $this->unitHistoryService->syncPrimaryAssignment(
                 $tenant,
@@ -536,6 +527,14 @@ class TenantService
             $tenant->save();
 
             DB::commit();
+            if ($assignmentChanged && getOption('send_email_status', 0) == ACTIVE) {
+                $this->tenantAccessService->sendAssignmentEmail(
+                    $tenant->fresh(['user', 'property', 'unit']),
+                    null,
+                    null,
+                    getOwnerUserId()
+                );
+            }
             $data = $tenant;
             $data->step = 'nextStep2';
             $message = __(UPDATED_SUCCESSFULLY);
@@ -670,9 +669,21 @@ class TenantService
                     })
                     ->exists();
                 if ($assignmentExists) {
+                    $assignmentChanged = $this->tenantAssignmentChanged($tenant, [
+                        'property_id' => $propertyId,
+                        'unit_id' => $unitId,
+                    ]);
                     $tenant->property_id = $propertyId;
                     $tenant->unit_id = $unitId;
                     $tenant->save();
+                    if ($assignmentChanged && getOption('send_email_status', 0) == ACTIVE) {
+                        $this->tenantAccessService->sendAssignmentEmail(
+                            $tenant->fresh(['user', 'property', 'unit']),
+                            null,
+                            null,
+                            getOwnerUserId()
+                        );
+                    }
                     continue;
                 }
                 if ((int) $tenant->status === TENANT_STATUS_ACTIVE && !is_null($unit->max_occupancy)) {
@@ -694,6 +705,14 @@ class TenantService
                 $tenant->property_id = $propertyId;
                 $tenant->unit_id = $unitId;
                 $tenant->save();
+                if (getOption('send_email_status', 0) == ACTIVE) {
+                    $this->tenantAccessService->sendAssignmentEmail(
+                        $tenant->fresh(['user', 'property', 'unit']),
+                        null,
+                        null,
+                        getOwnerUserId()
+                    );
+                }
             }
 
             DB::commit();
@@ -905,5 +924,16 @@ class TenantService
             $message = getErrorMessage($e, $e->getMessage());
             return $this->error([],  $message);
         }
+    }
+
+    private function tenantAssignmentChanged(Tenant $tenant, array $next): bool
+    {
+        foreach ($next as $key => $value) {
+            if ((string) ($tenant->{$key} ?? '') !== (string) ($value ?? '')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

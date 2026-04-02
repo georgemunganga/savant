@@ -10,8 +10,10 @@ use App\Http\Requests\OwnerRegisterRequest;
 use App\Models\EmailTemplate;
 use App\Models\Owner;
 use App\Models\Package;
+use App\Models\Tenant;
 use App\Models\User;
 use App\Services\SmsMail\MailService;
+use App\Services\TenantAccessService;
 use App\Traits\ResponseTrait;
 use Carbon\Carbon;
 use Exception;
@@ -45,8 +47,32 @@ class AuthController extends Controller
         $payload = $user->only(['id', 'first_name', 'last_name', 'email', 'contact_number', 'role', 'owner_user_id']);
         $payload['image'] = $user->image;
         $payload['role_slug'] = $this->roleSlugFor((int) $user->role);
+        $payload['has_assignment'] = $this->tenantHasAssignment($user->tenant);
+        $payload['tenant_status'] = $user->tenant?->status;
 
         return $payload;
+    }
+
+    private function tenantHasAssignment(?Tenant $tenant): bool
+    {
+        return !is_null($tenant)
+            && !is_null($tenant->property_id)
+            && !is_null($tenant->unit_id);
+    }
+
+    private function tenantCanAccessPortal(?Tenant $tenant): bool
+    {
+        return !is_null($tenant)
+            && in_array((int) $tenant->status, [TENANT_STATUS_DRAFT, TENANT_STATUS_ACTIVE], true);
+    }
+
+    private function passwordResetError(string $message, int $status = 422)
+    {
+        return response()->json([
+            'status' => false,
+            'data' => [],
+            'message' => $message,
+        ], $status);
     }
 
     public function ownerRegister(OwnerRegisterRequest $request)
@@ -224,12 +250,7 @@ class AuthController extends Controller
                     throw new Exception(__('Your account has been deleted.'));
                 } elseif (isset($user) && ($user->status == USER_STATUS_ACTIVE)) {
                     if (isset($user) && ($user->role == USER_ROLE_TENANT)) {
-                        if (
-                            !is_null($user->tenant) &&
-                            (int) $user->tenant->status === TENANT_STATUS_ACTIVE &&
-                            !is_null($user->tenant->property_id) &&
-                            !is_null($user->tenant->unit_id)
-                        ) {
+                        if ($this->tenantCanAccessPortal($user->tenant)) {
                             $response['access_token'] = $user->createToken(Str::random(40))->accessToken;
                             $response['user'] = $this->authUserPayload($user);
                             $message = __(LOGIN_SUCCESSFUL);
@@ -269,5 +290,62 @@ class AuthController extends Controller
         } catch (Exception $e) {
             return $this->error([], $e->getMessage());
         }
+    }
+
+    public function validatePasswordReset(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email',
+            'token' => 'required|string',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->validationErrorApi($validator, $validator->errors()->first());
+        }
+
+        $user = User::query()->where('email', $request->email)->first();
+        if (!$user || !Password::broker()->tokenExists($user, $request->token)) {
+            return $this->passwordResetError(__('Invalid or expired password setup link'));
+        }
+
+        return $this->success([
+            'valid' => true,
+            'email' => $user->email,
+        ], __('Password setup link is valid'));
+    }
+
+    public function completePasswordReset(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email',
+            'token' => 'required|string',
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->validationErrorApi($validator, $validator->errors()->first());
+        }
+
+        $response = Password::broker()->reset(
+            $request->only('email', 'password', 'password_confirmation', 'token'),
+            function (User $user, string $password) {
+                $user->password = Hash::make($password);
+                if (is_null($user->email_verified_at)) {
+                    $user->email_verified_at = now();
+                }
+                if ((int) $user->status === USER_STATUS_UNVERIFIED) {
+                    $user->status = USER_STATUS_ACTIVE;
+                }
+                $user->save();
+            }
+        );
+
+        if ($response !== Password::PASSWORD_RESET) {
+            return $this->passwordResetError(__('Invalid or expired password setup link'));
+        }
+
+        return $this->success([
+            'redirect_to' => '/auth',
+        ], __('Password set successfully. Please sign in.'));
     }
 }

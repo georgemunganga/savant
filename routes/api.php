@@ -31,6 +31,8 @@ Route::post('otp-verify', [AuthController::class, 'otpVerify']);
 Route::post('otp-re-send', [AuthController::class, 'otpReSend']);
 Route::post('login', [AuthController::class, 'login']);
 Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('password-reset/validate', [AuthController::class, 'validatePasswordReset']);
+Route::post('password-reset/complete', [AuthController::class, 'completePasswordReset']);
 
 // setting
 Route::get('system-currency', [SettingController::class, 'systemCurrency']);
@@ -48,6 +50,10 @@ Route::post(
 Route::post(
     'public/properties/{propertyId}/waitlist',
     [PublicPropertyAvailabilityController::class, 'waitlist']
+);
+Route::post(
+    'public/properties/{propertyId}/bookings/confirm',
+    [PublicPropertyAvailabilityController::class, 'confirm']
 );
 
 

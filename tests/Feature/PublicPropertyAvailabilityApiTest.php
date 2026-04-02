@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\TenantPortalActionMail;
 use App\Models\Property;
 use App\Models\PropertyDetail;
 use App\Models\PropertyUnit;
@@ -10,6 +11,8 @@ use App\Models\Tenant;
 use App\Models\TenantUnitAssignment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 class PublicPropertyAvailabilityApiTest extends TestCase
@@ -154,6 +157,122 @@ class PublicPropertyAvailabilityApiTest extends TestCase
         ]);
     }
 
+    public function test_booking_confirm_creates_a_tenant_account_and_assignment_for_a_unit_backed_option(): void
+    {
+        Mail::fake();
+        $this->enableTenantPortalMail();
+
+        $owner = $this->createOwnerUser();
+        [$property, $unit, $option] = $this->createPublicPropertyWithUnit([
+            'owner_user_id' => $owner->id,
+            'max_occupancy' => 2,
+            'rental_kind' => 'whole_unit',
+        ]);
+
+        $response = $this->postJson("/api/public/properties/{$property->id}/bookings/confirm", [
+            'option_id' => $option->id,
+            'stay_mode' => 'months',
+            'start_date' => '2026-05-01',
+            'end_date' => '2026-06-01',
+            'guests' => 2,
+            'full_name' => 'Jane Doe',
+            'email' => 'jane@example.com',
+            'phone' => '+260971111111',
+            'payment_plan' => 'later',
+        ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('status', true)
+            ->assertJsonPath('data.booking.account_created', true)
+            ->assertJsonPath('data.booking.setup_email_sent', true)
+            ->assertJsonPath('data.booking.has_assignment', true)
+            ->assertJsonPath('data.booking.assignment_created', true);
+
+        $tenantUser = User::query()->where('email', 'jane@example.com')->firstOrFail();
+        $tenant = Tenant::query()->where('user_id', $tenantUser->id)->firstOrFail();
+
+        $this->assertSame(USER_ROLE_TENANT, (int) $tenantUser->role);
+        $this->assertSame($property->id, (int) $tenant->property_id);
+        $this->assertSame($unit->id, (int) $tenant->unit_id);
+        $this->assertSame('2026-05-01', (string) $tenant->lease_start_date);
+        $this->assertSame('2026-06-01', (string) $tenant->lease_end_date);
+        $this->assertDatabaseHas('tenant_unit_assignments', [
+            'tenant_id' => $tenant->id,
+            'property_id' => $property->id,
+            'unit_id' => $unit->id,
+        ]);
+
+        Mail::assertSent(TenantPortalActionMail::class, 2);
+    }
+
+    public function test_booking_confirm_reuses_an_existing_tenant_and_leaves_whole_property_options_pending_assignment(): void
+    {
+        Mail::fake();
+        $this->enableTenantPortalMail();
+
+        $owner = $this->createOwnerUser();
+        [$property, $unit, $option] = $this->createPublicPropertyWithUnit([
+            'owner_user_id' => $owner->id,
+            'rental_kind' => 'whole_property',
+            'property_unit_id' => null,
+        ]);
+
+        $user = User::query()->forceCreate([
+            'first_name' => 'Existing',
+            'last_name' => 'Tenant',
+            'email' => 'existing@example.com',
+            'password' => Hash::make('secret123!'),
+            'status' => USER_STATUS_ACTIVE,
+            'role' => USER_ROLE_TENANT,
+            'owner_user_id' => $owner->id,
+            'email_verified_at' => now(),
+        ]);
+
+        $tenant = Tenant::query()->forceCreate([
+            'user_id' => $user->id,
+            'owner_user_id' => $owner->id,
+            'job' => 'Engineer',
+            'family_member' => 1,
+            'property_id' => null,
+            'unit_id' => null,
+            'rent_type' => RENT_TYPE_MONTHLY,
+            'general_rent' => 0,
+            'security_deposit' => 0,
+            'late_fee' => 0,
+            'incident_receipt' => 0,
+            'status' => TENANT_STATUS_ACTIVE,
+        ]);
+
+        $this->postJson("/api/public/properties/{$property->id}/bookings/confirm", [
+            'option_id' => $option->id,
+            'stay_mode' => 'months',
+            'start_date' => '2026-05-01',
+            'end_date' => '2026-06-01',
+            'guests' => 1,
+            'full_name' => 'Existing Tenant',
+            'email' => 'existing@example.com',
+            'phone' => '+260971111111',
+            'payment_plan' => 'later',
+        ])
+            ->assertOk()
+            ->assertJsonPath('status', true)
+            ->assertJsonPath('data.booking.account_created', false)
+            ->assertJsonPath('data.booking.setup_email_sent', false)
+            ->assertJsonPath('data.booking.has_assignment', false)
+            ->assertJsonPath('data.booking.assignment_created', true);
+
+        $tenant->refresh();
+
+        $this->assertSame($property->id, (int) $tenant->property_id);
+        $this->assertNull($tenant->unit_id);
+        $this->assertSame('2026-05-01', (string) $tenant->lease_start_date);
+        $this->assertSame('2026-06-01', (string) $tenant->lease_end_date);
+        $this->assertSame(1, User::query()->where('email', 'existing@example.com')->count());
+
+        Mail::assertNothingSent();
+    }
+
     public function test_cross_property_option_is_rejected(): void
     {
         [$firstProperty] = $this->createPublicPropertyWithUnit();
@@ -181,6 +300,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
     private function createPublicPropertyWithUnit(array $overrides = []): array
     {
         $property = Property::query()->forceCreate([
+            'owner_user_id' => $overrides['owner_user_id'] ?? null,
             'property_type' => PROPERTY_TYPE_OWN,
             'name' => $overrides['name'] ?? 'Test Public Property',
             'number_of_unit' => 1,
@@ -215,7 +335,9 @@ class PublicPropertyAvailabilityApiTest extends TestCase
 
         $option = PublicPropertyOption::query()->forceCreate([
             'property_id' => $property->id,
-            'property_unit_id' => $unit->id,
+            'property_unit_id' => array_key_exists('property_unit_id', $overrides)
+                ? $overrides['property_unit_id']
+                : $unit->id,
             'rental_kind' => $overrides['rental_kind'] ?? 'whole_unit',
             'monthly_rate' => 12000,
             'nightly_rate' => 700,
@@ -226,6 +348,33 @@ class PublicPropertyAvailabilityApiTest extends TestCase
         ]);
 
         return [$property, $unit, $option];
+    }
+
+    private function enableTenantPortalMail(): void
+    {
+        config([
+            'settings.app_name' => 'Savant',
+            'settings.send_email_status' => ACTIVE,
+        ]);
+
+        putenv('MAIL_STATUS=1');
+        putenv('MAIL_USERNAME=tester@example.test');
+        $_ENV['MAIL_STATUS'] = '1';
+        $_ENV['MAIL_USERNAME'] = 'tester@example.test';
+        $_SERVER['MAIL_STATUS'] = '1';
+        $_SERVER['MAIL_USERNAME'] = 'tester@example.test';
+    }
+
+    private function createOwnerUser(): User
+    {
+        return User::query()->forceCreate([
+            'first_name' => 'Owner',
+            'last_name' => 'User',
+            'email' => 'owner' . random_int(1000, 9999) . '@example.test',
+            'password' => Hash::make('owner-secret'),
+            'status' => USER_STATUS_ACTIVE,
+            'role' => USER_ROLE_OWNER,
+        ]);
     }
 
     private function assignActiveTenant(Property $property, PropertyUnit $unit, array $overrides = []): void

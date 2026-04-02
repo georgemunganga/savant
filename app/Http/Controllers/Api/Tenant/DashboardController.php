@@ -43,6 +43,40 @@ class DashboardController extends Controller
     {
         $tenantUser = auth()->user()->tenant;
         $today = Carbon::today();
+        $hasAssignment = !is_null($tenantUser->property_id) && !is_null($tenantUser->unit_id);
+
+        if (!$hasAssignment) {
+            return $this->success([
+                'property' => null,
+                'unit' => null,
+                'tenant' => [
+                    'general_rent' => (float) ($tenantUser->general_rent ?? 0),
+                ],
+                'invoices' => [],
+                'totalTickets' => 0,
+                'today' => $today->toDateString(),
+                'notices' => [],
+                'webapp' => [
+                    'hasAssignment' => false,
+                    'tenantStatus' => (int) $tenantUser->status,
+                    'activeStay' => __('No rented apartment yet'),
+                    'unitName' => __('Assignment pending'),
+                    'nextPayment' => __('No invoice yet'),
+                    'nextInvoiceId' => 0,
+                    'openInvoices' => 0,
+                    'openInvoiceAmount' => 0,
+                    'openRequests' => 0,
+                    'scheduledRequests' => 0,
+                    'recentInvoices' => [],
+                    'tickets' => [],
+                    'notices' => [],
+                    'noStayTitle' => __('Your account is ready. Your stay is not assigned yet.'),
+                    'noStayMessage' => __('You can explore listings now or wait for Savant to assign your property and unit.'),
+                    'exploreListingsHref' => '/listings',
+                ],
+            ]);
+        }
+
         $property = Property::select(['name', 'thumbnail_image', 'description'])->findOrFail($tenantUser->property_id);
         $unit = PropertyUnit::select(['unit_name'])->findOrFail($tenantUser->unit_id);
         $invoices = Invoice::query()
@@ -81,6 +115,8 @@ class DashboardController extends Controller
         $data['today'] = $today->toDateString();
         $data['notices'] = $notices;
         $data['webapp'] = [
+            'hasAssignment' => true,
+            'tenantStatus' => (int) $tenantUser->status,
             'activeStay' => $property->name,
             'unitName' => $unit->unit_name,
             'nextPayment' => $nextInvoice ? Carbon::parse($nextInvoice->due_date)->format('d M Y') : 'No unpaid invoice',
@@ -110,6 +146,9 @@ class DashboardController extends Controller
                     'publishedAt' => Carbon::parse($notice->start_date)->format('d M Y'),
                 ];
             })->values(),
+            'noStayTitle' => null,
+            'noStayMessage' => null,
+            'exploreListingsHref' => '/listings',
         ];
 
         return $this->success($data);

@@ -6,14 +6,26 @@ use App\Models\Property;
 use App\Models\PropertyUnit;
 use App\Models\PublicPropertyOption;
 use App\Models\PublicPropertyWaitlist;
+use App\Models\Tenant;
+use App\Models\User;
 use App\Models\TenantUnitAssignment;
 use Carbon\Carbon;
+use Exception;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class PublicPropertyAvailabilityService
 {
+    public function __construct(
+        private readonly UnitHistoryService $unitHistoryService = new UnitHistoryService(),
+        private readonly TenantAccessService $tenantAccessService = new TenantAccessService()
+    ) {
+    }
+
     public function checkAvailability(int $propertyId, array $payload): array
     {
         $property = $this->getPublicProperty($propertyId);
@@ -49,6 +61,78 @@ class PublicPropertyAvailabilityService
         ]);
     }
 
+    public function confirmBooking(int $propertyId, array $payload): array
+    {
+        DB::beginTransaction();
+
+        try {
+            $property = $this->getPublicProperty($propertyId);
+            $option = $this->getPublicOption($property->id, (int) $payload['option_id']);
+            $startDate = Carbon::parse($payload['start_date'])->toDateString();
+            $endDate = Carbon::parse($payload['end_date'])->toDateString();
+            $availability = $this->calculateOptionAvailability(
+                $property,
+                $option,
+                $startDate,
+                $endDate,
+                $payload['stay_mode']
+            );
+
+            if (!$availability['available']) {
+                throw new Exception(__('This stay is no longer available. Please refresh availability and try again.'));
+            }
+
+            [$user, $tenant, $accountCreated] = $this->createOrReuseTenantAccount($property, $payload);
+            $setupEmailSent = $accountCreated || is_null($user->email_verified_at);
+            if ($setupEmailSent) {
+                $this->tenantAccessService->sendAccountSetupEmail($user, $property->owner_user_id);
+            }
+
+            $assignmentChanged = $this->applyBookingAssignment(
+                $tenant,
+                $property,
+                $option,
+                $payload['stay_mode'],
+                $startDate,
+                $endDate
+            );
+
+            if ($assignmentChanged && !is_null($tenant->property_id) && !is_null($tenant->unit_id)) {
+                $assignedProperty = Property::query()->find($tenant->property_id);
+                $assignedUnit = PropertyUnit::query()->find($tenant->unit_id);
+                if ($assignedProperty && $assignedUnit) {
+                    $this->tenantAccessService->sendAssignmentEmail(
+                        $tenant->fresh(['user', 'property', 'unit']),
+                        $assignedProperty,
+                        $assignedUnit,
+                        $property->owner_user_id
+                    );
+                }
+            }
+
+            DB::commit();
+
+            return [
+                'property_id' => $property->id,
+                'option_id' => $option->id,
+                'tenant_id' => $tenant->id,
+                'email' => $user->email,
+                'stay_mode' => $payload['stay_mode'],
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+                'guests' => (int) $payload['guests'],
+                'payment_plan' => $payload['payment_plan'],
+                'account_created' => $accountCreated,
+                'setup_email_sent' => $setupEmailSent,
+                'has_assignment' => !is_null($tenant->property_id) && !is_null($tenant->unit_id),
+                'assignment_created' => $assignmentChanged,
+            ];
+        } catch (\Throwable $throwable) {
+            DB::rollBack();
+            throw $throwable;
+        }
+    }
+
     private function getPublicProperty(int $propertyId): Property
     {
         $property = Property::query()
@@ -80,6 +164,139 @@ class PublicPropertyAvailabilityService
         }
 
         return $option;
+    }
+
+    private function createOrReuseTenantAccount(Property $property, array $payload): array
+    {
+        $email = Str::lower(trim((string) $payload['email']));
+        $fullName = trim((string) $payload['full_name']);
+        $nameParts = preg_split('/\s+/', $fullName, 2) ?: [];
+        $firstName = $nameParts[0] ?? 'Guest';
+        $lastName = $nameParts[1] ?? 'Tenant';
+        $existingUser = User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
+
+        if ($existingUser && (int) $existingUser->role !== USER_ROLE_TENANT) {
+            throw new Exception(__('This email is already linked to another account. Please contact Savant support.'));
+        }
+
+        if (
+            $existingUser &&
+            !is_null($existingUser->owner_user_id) &&
+            !is_null($property->owner_user_id) &&
+            (int) $existingUser->owner_user_id !== (int) $property->owner_user_id
+        ) {
+            throw new Exception(__('This email is already linked to another Savant account. Please contact support.'));
+        }
+
+        $accountCreated = false;
+        $user = $existingUser;
+        if (!$user) {
+            $user = User::query()->create([
+                'first_name' => $firstName,
+                'last_name' => $lastName,
+                'email' => $email,
+                'contact_number' => $payload['phone'],
+                'password' => Hash::make(Str::random(40)),
+                'status' => USER_STATUS_ACTIVE,
+                'role' => USER_ROLE_TENANT,
+                'owner_user_id' => $property->owner_user_id,
+            ]);
+            $accountCreated = true;
+        } else {
+            if (blank($user->contact_number)) {
+                $user->contact_number = $payload['phone'];
+            }
+            if (blank($user->first_name)) {
+                $user->first_name = $firstName;
+            }
+            if (blank($user->last_name)) {
+                $user->last_name = $lastName;
+            }
+            if ((int) $user->status === USER_STATUS_UNVERIFIED) {
+                $user->status = USER_STATUS_ACTIVE;
+            }
+            if (is_null($user->owner_user_id)) {
+                $user->owner_user_id = $property->owner_user_id;
+            }
+            $user->save();
+        }
+
+        $tenant = $user->tenant;
+        if (!$tenant) {
+            $tenant = new Tenant();
+            $tenant->user_id = $user->id;
+            $tenant->owner_user_id = $property->owner_user_id;
+            $tenant->job = __('Guest');
+            $tenant->family_member = max((int) $payload['guests'], 1);
+            $tenant->status = TENANT_STATUS_ACTIVE;
+            $tenant->rent_type = $payload['stay_mode'] === 'months' ? RENT_TYPE_MONTHLY : RENT_TYPE_CUSTOM;
+            $tenant->general_rent = 0;
+            $tenant->security_deposit = 0;
+            $tenant->late_fee = 0;
+            $tenant->incident_receipt = 0;
+            $tenant->save();
+        } else {
+            $tenant->owner_user_id = $tenant->owner_user_id ?: $property->owner_user_id;
+            $tenant->family_member = max((int) $payload['guests'], (int) ($tenant->family_member ?? 1), 1);
+            if ((int) $tenant->status === TENANT_STATUS_INACTIVE || (int) $tenant->status === TENANT_STATUS_CLOSE) {
+                $tenant->status = TENANT_STATUS_ACTIVE;
+            }
+            $tenant->save();
+        }
+
+        return [$user->fresh(), $tenant->fresh(), $accountCreated];
+    }
+
+    private function applyBookingAssignment(
+        Tenant $tenant,
+        Property $property,
+        PublicPropertyOption $option,
+        string $stayMode,
+        string $startDate,
+        string $endDate
+    ): bool {
+        $original = [
+            'property_id' => $tenant->property_id,
+            'unit_id' => $tenant->unit_id,
+            'lease_start_date' => $tenant->lease_start_date,
+            'lease_end_date' => $tenant->lease_end_date,
+        ];
+
+        $tenant->owner_user_id = $tenant->owner_user_id ?: $property->owner_user_id;
+        $tenant->status = TENANT_STATUS_ACTIVE;
+        $tenant->rent_type = $stayMode === 'months' ? RENT_TYPE_MONTHLY : RENT_TYPE_CUSTOM;
+        $tenant->general_rent = (float) ($stayMode === 'months'
+            ? ($option->monthly_rate ?? 0)
+            : ($option->nightly_rate ?? 0));
+        $tenant->due_date = (int) Carbon::parse($startDate)->day;
+        $tenant->lease_start_date = $startDate;
+        $tenant->lease_end_date = $endDate;
+
+        if ($option->property_unit_id) {
+            $this->unitHistoryService->syncPrimaryAssignment(
+                $tenant,
+                (int) $property->id,
+                (int) $option->property_unit_id,
+                null
+            );
+
+            $tenant->property_id = $property->id;
+            $tenant->unit_id = $option->property_unit_id;
+        } else {
+            if (!is_null($tenant->unit_id) && (int) $tenant->property_id !== (int) $property->id) {
+                throw new Exception(__('This stay needs manual assignment. Please contact Savant support.'));
+            }
+
+            $tenant->property_id = $tenant->property_id ?: $property->id;
+            $tenant->unit_id = null;
+        }
+
+        $tenant->save();
+
+        return $original['property_id'] != $tenant->property_id
+            || $original['unit_id'] != $tenant->unit_id
+            || $original['lease_start_date'] != $tenant->lease_start_date
+            || $original['lease_end_date'] != $tenant->lease_end_date;
     }
 
     private function calculateOptionAvailability(

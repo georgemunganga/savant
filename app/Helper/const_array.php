@@ -96,6 +96,8 @@ function emailTemplates($input = null)
         EMAIL_TEMPLATE_WELCOME => 'Welcome Mail',
         EMAIL_TEMPLATE_LISTING_REPLY => 'Listing Reply',
         EMAIL_TEMPLATE_LISTING_CONTACT => 'Listing Contact',
+        EMAIL_TEMPLATE_ACCOUNT_SETUP => 'Account Setup',
+        EMAIL_TEMPLATE_TENANT_ASSIGNMENT => 'Tenant Assignment',
     ];
 
     if (is_null($input)) {
@@ -120,6 +122,11 @@ function emailTemplateFields($input = null)
         '{{otp}}' => '',
         '{{verify_link}}' => '',
         '{{user_name}}' => '',
+        '{{set_password_link}}' => '',
+        '{{property_name}}' => '',
+        '{{unit_name}}' => '',
+        '{{stay_start}}' => '',
+        '{{stay_end}}' => '',
     ];
 
     if (is_null($input)) {

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PublicPropertyAvailabilityRequest;
+use App\Http\Requests\PublicPropertyBookingConfirmRequest;
 use App\Services\PublicPropertyAvailabilityService;
 use App\Traits\ResponseTrait;
 use Exception;
@@ -55,6 +56,25 @@ class PublicPropertyAvailabilityController extends Controller
                     'phone' => $waitlist->phone,
                 ],
             ], 'Joined waiting list successfully');
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'status' => false,
+                'data' => null,
+                'message' => 'Property not found',
+            ], 404);
+        } catch (Exception $e) {
+            return $this->error([], $e->getMessage());
+        }
+    }
+
+    public function confirm(int $propertyId, PublicPropertyBookingConfirmRequest $request)
+    {
+        try {
+            $booking = $this->availabilityService->confirmBooking($propertyId, $request->validated());
+
+            return $this->success([
+                'booking' => $booking,
+            ], 'Booking confirmed successfully');
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'status' => false,

@@ -9,6 +9,7 @@ use App\Mail\ReminderMail;
 use App\Mail\SignUpMail;
 use App\Mail\SubscriptionSuccessMail;
 use App\Mail\ThankYouMail;
+use App\Mail\TenantPortalActionMail;
 use App\Mail\UserEmailVerification;
 use App\Mail\WelcomeMail;
 use App\Models\MailHistory;
@@ -329,6 +330,39 @@ class MailService
                         Log::channel('sms-mail')->info($e->getMessage());
                     }
                 }
+                return 'success';
+            } else {
+                return __('No email found');
+            }
+        } else {
+            return __('Smtp setting not enabled');
+        }
+    }
+
+    public static function sendTenantPortalActionMail($emails = [], $subject = null, $message = null, $ownerUserId = null, array $details = [])
+    {
+        if (env('MAIL_STATUS', 0) == 1 && env('MAIL_USERNAME')) {
+            if (count($emails)) {
+                foreach ($emails as $key => $email) {
+                    try {
+                        if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                            $payload = array_merge($details, [
+                                'subject' => $subject,
+                                'message' => $message,
+                            ]);
+
+                            Mail::to($email)->send(new TenantPortalActionMail($payload));
+                            Log::channel('sms-mail')->info('email : ' . $email . ', subject : ' . $subject . 'key : ' . $key . ', date : ' . date('d-m-Y'));
+                            self::historyStore($ownerUserId, $email, $subject, $message, SMS_STATUS_DELIVERED);
+                        } else {
+                            throw new Exception('Email ' . $email . ' is not valid');
+                        }
+                    } catch (Exception $e) {
+                        Log::channel('sms-mail')->info($e->getMessage());
+                        self::historyStore($ownerUserId, $email, $subject, $message, SMS_STATUS_FAILED, $e->getMessage());
+                    }
+                }
+
                 return 'success';
             } else {
                 return __('No email found');

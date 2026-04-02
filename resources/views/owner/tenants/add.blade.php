@@ -181,11 +181,10 @@
                                                                 </div>
                                                                 <div class="col-md-6 mb-25">
                                                                     <label
-                                                                        class="label-text-title color-heading font-medium mb-2">{{ __('Password') }}
-                                                                        <span class="text-danger">*</span></label>
-                                                                    <input type="password" name="password"
-                                                                        class="form-control"
-                                                                        placeholder="{{ __('Password') }}">
+                                                                        class="label-text-title color-heading font-medium mb-2">{{ __('Account Setup') }}</label>
+                                                                    <div class="form-control d-flex align-items-center" style="min-height: 46px;">
+                                                                        {{ __('Savant will email a secure set-password link after you create this tenant.') }}
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         </div>
