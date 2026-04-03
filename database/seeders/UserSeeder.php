@@ -81,6 +81,8 @@ class UserSeeder extends Seeder
             if (Schema::hasTable('tenant_unit_assignments')) {
                 $this->syncTenantAssignment($tenantId, $propertyId, $unitId);
             }
+
+            $this->seedOwnerSupportConfig($ownerId);
         });
     }
 
@@ -239,6 +241,51 @@ class UserSeeder extends Seeder
         TenantUnitAssignment::updateOrCreate($match, $payload);
     }
 
+    private function seedOwnerSupportConfig(int $ownerId): void
+    {
+        $this->upsertOwnerScopedNames('maintenance_issues', $ownerId, [
+            'Plumbing',
+            'Electrical',
+            'Security',
+        ]);
+
+        $this->upsertOwnerScopedNames('ticket_topics', $ownerId, [
+            'Maintenance',
+            'Billing',
+            'General',
+        ]);
+    }
+
+    private function upsertOwnerScopedNames(string $table, int $ownerId, array $names): void
+    {
+        foreach ($names as $name) {
+            $query = DB::table($table)->where('name', $name);
+
+            if ($this->tableHasColumn($table, 'owner_user_id')) {
+                $query->where('owner_user_id', $ownerId);
+            }
+
+            $existingId = $query->value('id');
+            $timestamp = now();
+            $payload = $this->filterColumns($table, [
+                'name' => $name,
+                'owner_user_id' => $ownerId,
+                'status' => ACTIVE,
+                'deleted_at' => null,
+                'updated_at' => $timestamp,
+            ]);
+
+            if ($existingId) {
+                DB::table($table)->where('id', $existingId)->update($payload);
+                continue;
+            }
+
+            DB::table($table)->insert($payload + $this->filterColumns($table, [
+                'created_at' => $timestamp,
+            ]));
+        }
+    }
+
     private function filterColumns(string $table, array $payload): array
     {
         if (! isset($this->tableColumns[$table])) {
@@ -246,5 +293,14 @@ class UserSeeder extends Seeder
         }
 
         return array_intersect_key($payload, $this->tableColumns[$table]);
+    }
+
+    private function tableHasColumn(string $table, string $column): bool
+    {
+        if (! isset($this->tableColumns[$table])) {
+            $this->tableColumns[$table] = array_flip(Schema::getColumnListing($table));
+        }
+
+        return isset($this->tableColumns[$table][$column]);
     }
 }

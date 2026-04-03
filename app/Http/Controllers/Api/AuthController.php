@@ -296,6 +296,17 @@ class AuthController extends Controller
         }
     }
 
+    public function logout(Request $request)
+    {
+        try {
+            $request->user()?->token()?->revoke();
+
+            return $this->success([], __('Logout Successful'));
+        } catch (Exception $e) {
+            return $this->error([], $e->getMessage());
+        }
+    }
+
     public function forgotPassword(Request $request)
     {
         try {
