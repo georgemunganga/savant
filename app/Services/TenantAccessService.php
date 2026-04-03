@@ -15,17 +15,41 @@ class TenantAccessService
 {
     public function buildWebappUrl(string $path, array $query = []): string
     {
-        $baseUrl = env('WEBAPP_URL')
-            ?: env('FRONTEND_URL')
-            ?: (str_contains((string) config('app.url'), 'localhost')
-                ? 'http://localhost:5173'
-                : config('app.url'));
+        $baseUrl = $this->resolveWebappBaseUrl();
 
         $baseUrl = rtrim((string) $baseUrl, '/');
         $path = '/' . ltrim($path, '/');
         $queryString = http_build_query($query);
 
         return $queryString ? "{$baseUrl}{$path}?{$queryString}" : "{$baseUrl}{$path}";
+    }
+
+    private function resolveWebappBaseUrl(): string
+    {
+        $configuredWebappUrl = trim((string) config('app.frontend_url'));
+        if ($configuredWebappUrl !== '') {
+            return $configuredWebappUrl;
+        }
+
+        $appUrl = trim((string) config('app.url'));
+        if ($appUrl === '' || str_contains($appUrl, 'localhost')) {
+            return 'http://localhost:5173';
+        }
+
+        $parsedUrl = parse_url($appUrl);
+        if (!is_array($parsedUrl) || empty($parsedUrl['host'])) {
+            return $appUrl;
+        }
+
+        $host = (string) $parsedUrl['host'];
+        if (str_starts_with($host, 'admin.')) {
+            $host = substr($host, strlen('admin.'));
+        }
+
+        $scheme = $parsedUrl['scheme'] ?? 'https';
+        $port = isset($parsedUrl['port']) ? ':' . $parsedUrl['port'] : '';
+
+        return "{$scheme}://{$host}{$port}";
     }
 
     public function issuePasswordSetupToken(User $user): string
