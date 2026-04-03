@@ -273,6 +273,100 @@ class PublicPropertyAvailabilityApiTest extends TestCase
         Mail::assertNothingSent();
     }
 
+    public function test_booking_confirm_allows_phone_to_be_optional(): void
+    {
+        Mail::fake();
+        $this->enableTenantPortalMail();
+
+        $owner = $this->createOwnerUser();
+        [$property, $unit, $option] = $this->createPublicPropertyWithUnit([
+            'owner_user_id' => $owner->id,
+            'max_occupancy' => 2,
+            'rental_kind' => 'whole_unit',
+        ]);
+
+        $this->postJson("/api/public/properties/{$property->id}/bookings/confirm", [
+            'option_id' => $option->id,
+            'stay_mode' => 'months',
+            'start_date' => '2026-07-01',
+            'end_date' => '2026-08-01',
+            'guests' => 1,
+            'full_name' => 'Optional Phone',
+            'email' => 'optional-phone@example.com',
+            'payment_plan' => 'later',
+        ])
+            ->assertOk()
+            ->assertJsonPath('status', true)
+            ->assertJsonPath('data.booking.account_created', true);
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'optional-phone@example.com',
+            'contact_number' => null,
+        ]);
+    }
+
+    public function test_booking_confirm_reuses_existing_tenant_when_phone_number_is_already_saved(): void
+    {
+        Mail::fake();
+        $this->enableTenantPortalMail();
+
+        $owner = $this->createOwnerUser();
+        [$firstProperty] = $this->createPublicPropertyWithUnit([
+            'owner_user_id' => $owner->id,
+            'slug' => 'first-property',
+        ]);
+        [$secondProperty, $unit, $option] = $this->createPublicPropertyWithUnit([
+            'owner_user_id' => $owner->id,
+            'slug' => 'second-property',
+        ]);
+
+        $user = User::query()->forceCreate([
+            'first_name' => 'Repeat',
+            'last_name' => 'Guest',
+            'email' => 'repeat@example.com',
+            'contact_number' => '+260972827372',
+            'password' => Hash::make('secret123!'),
+            'status' => USER_STATUS_ACTIVE,
+            'role' => USER_ROLE_TENANT,
+            'owner_user_id' => $owner->id,
+            'email_verified_at' => now(),
+        ]);
+
+        $tenant = Tenant::query()->forceCreate([
+            'user_id' => $user->id,
+            'owner_user_id' => $owner->id,
+            'job' => 'Engineer',
+            'family_member' => 1,
+            'property_id' => $firstProperty->id,
+            'unit_id' => null,
+            'rent_type' => RENT_TYPE_MONTHLY,
+            'general_rent' => 0,
+            'security_deposit' => 0,
+            'late_fee' => 0,
+            'incident_receipt' => 0,
+            'status' => TENANT_STATUS_ACTIVE,
+        ]);
+
+        $this->postJson("/api/public/properties/{$secondProperty->id}/bookings/confirm", [
+            'option_id' => $option->id,
+            'stay_mode' => 'months',
+            'start_date' => '2026-09-01',
+            'end_date' => '2026-10-01',
+            'guests' => 1,
+            'full_name' => 'Repeat Guest',
+            'email' => 'repeat@example.com',
+            'phone' => '+260972827372',
+            'payment_plan' => 'later',
+        ])
+            ->assertOk()
+            ->assertJsonPath('status', true)
+            ->assertJsonPath('data.booking.account_created', false)
+            ->assertJsonPath('data.booking.tenant_id', $tenant->id);
+
+        $this->assertSame(1, User::query()->where('email', 'repeat@example.com')->count());
+        $this->assertSame(1, User::query()->where('contact_number', '+260972827372')->count());
+    }
+
     public function test_cross_property_option_is_rejected(): void
     {
         [$firstProperty] = $this->createPublicPropertyWithUnit();

@@ -170,13 +170,38 @@ class PublicPropertyAvailabilityService
     {
         $email = Str::lower(trim((string) $payload['email']));
         $fullName = trim((string) $payload['full_name']);
+        $phone = $this->normalizePhone($payload['phone'] ?? null);
         $nameParts = preg_split('/\s+/', $fullName, 2) ?: [];
         $firstName = $nameParts[0] ?? 'Guest';
         $lastName = $nameParts[1] ?? 'Tenant';
-        $existingUser = User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
+        $existingUserByEmail = User::query()
+            ->whereRaw('LOWER(TRIM(email)) = ?', [$email])
+            ->first();
+        $existingUserByPhone = $phone
+            ? User::query()->where('contact_number', $phone)->first()
+            : null;
+
+        if (
+            $existingUserByEmail &&
+            $existingUserByPhone &&
+            (int) $existingUserByEmail->id !== (int) $existingUserByPhone->id
+        ) {
+            throw new Exception(__('These guest details are already linked to different accounts. Please contact Savant support.'));
+        }
+
+        $existingUser = $existingUserByEmail ?? $existingUserByPhone;
 
         if ($existingUser && (int) $existingUser->role !== USER_ROLE_TENANT) {
             throw new Exception(__('This email is already linked to another account. Please contact Savant support.'));
+        }
+
+        if (
+            !$existingUserByEmail &&
+            $existingUserByPhone &&
+            !blank($existingUserByPhone->email) &&
+            Str::lower(trim((string) $existingUserByPhone->email)) !== $email
+        ) {
+            throw new Exception(__('This phone number is already linked to another account. Please sign in or contact Savant support.'));
         }
 
         if (
@@ -195,7 +220,7 @@ class PublicPropertyAvailabilityService
                 'first_name' => $firstName,
                 'last_name' => $lastName,
                 'email' => $email,
-                'contact_number' => $payload['phone'],
+                'contact_number' => $phone,
                 'password' => Hash::make(Str::random(40)),
                 'status' => USER_STATUS_ACTIVE,
                 'role' => USER_ROLE_TENANT,
@@ -203,14 +228,17 @@ class PublicPropertyAvailabilityService
             ]);
             $accountCreated = true;
         } else {
-            if (blank($user->contact_number)) {
-                $user->contact_number = $payload['phone'];
+            if (blank($user->contact_number) && $phone) {
+                $user->contact_number = $phone;
             }
             if (blank($user->first_name)) {
                 $user->first_name = $firstName;
             }
             if (blank($user->last_name)) {
                 $user->last_name = $lastName;
+            }
+            if (blank($user->email)) {
+                $user->email = $email;
             }
             if ((int) $user->status === USER_STATUS_UNVERIFIED) {
                 $user->status = USER_STATUS_ACTIVE;
@@ -245,6 +273,13 @@ class PublicPropertyAvailabilityService
         }
 
         return [$user->fresh(), $tenant->fresh(), $accountCreated];
+    }
+
+    private function normalizePhone($value): ?string
+    {
+        $phone = trim((string) $value);
+
+        return $phone !== '' ? $phone : null;
     }
 
     private function applyBookingAssignment(
