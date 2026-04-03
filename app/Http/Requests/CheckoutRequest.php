@@ -31,7 +31,7 @@ class CheckoutRequest extends FormRequest
             'gateway' => 'required',
             'currency' => 'required',
             'bank_id' => 'required_if:gateway,bank',
-            'bank_slip' => 'required_if:gateway,bank'
+            'bank_slip' => 'required_if:gateway,bank|file|mimes:png,jpg,jpeg,pdf'
         ];
     }
 

@@ -14,6 +14,12 @@ class GatewayCurrency extends Model
 
     public function  getSymbolAttribute()
     {
-        return getCurrency($this->currency, true);
+        try {
+            return getCurrency($this->currency, true);
+        } catch (\Throwable $e) {
+            return Currency::query()
+                ->where('currency_code', $this->currency)
+                ->value('symbol') ?? $this->currency;
+        }
     }
 }

@@ -83,6 +83,7 @@ class UserSeeder extends Seeder
             }
 
             $this->seedOwnerSupportConfig($ownerId);
+            $this->seedOwnerDocumentConfigs($ownerId);
         });
     }
 
@@ -256,6 +257,26 @@ class UserSeeder extends Seeder
         ]);
     }
 
+    private function seedOwnerDocumentConfigs(int $ownerId): void
+    {
+        $this->upsertOwnerScopedRecords('kyc_configs', $ownerId, 'name', [
+            [
+                'name' => 'Passport Copy',
+                'details' => 'Upload a clear passport copy for identity verification.',
+                'tenant_id' => null,
+                'is_both' => DEACTIVATE,
+                'status' => ACTIVE,
+            ],
+            [
+                'name' => 'National ID',
+                'details' => 'Upload the front and back of your national ID for identity verification.',
+                'tenant_id' => null,
+                'is_both' => ACTIVE,
+                'status' => ACTIVE,
+            ],
+        ]);
+    }
+
     private function upsertOwnerScopedNames(string $table, int $ownerId, array $names): void
     {
         foreach ($names as $name) {
@@ -271,6 +292,38 @@ class UserSeeder extends Seeder
                 'name' => $name,
                 'owner_user_id' => $ownerId,
                 'status' => ACTIVE,
+                'deleted_at' => null,
+                'updated_at' => $timestamp,
+            ]);
+
+            if ($existingId) {
+                DB::table($table)->where('id', $existingId)->update($payload);
+                continue;
+            }
+
+            DB::table($table)->insert($payload + $this->filterColumns($table, [
+                'created_at' => $timestamp,
+            ]));
+        }
+    }
+
+    private function upsertOwnerScopedRecords(
+        string $table,
+        int $ownerId,
+        string $lookupKey,
+        array $records
+    ): void {
+        foreach ($records as $record) {
+            $query = DB::table($table)->where($lookupKey, $record[$lookupKey]);
+
+            if ($this->tableHasColumn($table, 'owner_user_id')) {
+                $query->where('owner_user_id', $ownerId);
+            }
+
+            $existingId = $query->value('id');
+            $timestamp = now();
+            $payload = $this->filterColumns($table, $record + [
+                'owner_user_id' => $ownerId,
                 'deleted_at' => null,
                 'updated_at' => $timestamp,
             ]);

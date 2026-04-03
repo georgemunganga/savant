@@ -25,7 +25,8 @@ class DocumentRequest extends FormRequest
     {
         return [
             'kyc_config_id' => 'required',
-            'front' => 'file|mimes:png,jpg,jpeg,pdf'
+            'front' => 'nullable|file|mimes:png,jpg,jpeg,pdf',
+            'back' => 'nullable|file|mimes:png,jpg,jpeg,pdf',
         ];
     }
 }
