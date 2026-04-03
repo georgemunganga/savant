@@ -89,6 +89,19 @@ class PublicPropertyCatalogService
                 'propertyDetail',
                 'fileAttachThumbnail',
                 'propertyImages.fileAttachSingle',
+                'propertyUnits' => function ($query) {
+                    $query
+                        ->whereNull('deleted_at')
+                        ->select([
+                            'id',
+                            'property_id',
+                            'unit_name',
+                            'max_occupancy',
+                            'bedroom',
+                            'bath',
+                            'square_feet',
+                        ]);
+                },
                 'publicOptions' => function ($query) {
                     $query
                         ->where('status', ACTIVE)
@@ -157,7 +170,7 @@ class PublicPropertyCatalogService
             return null;
         }
 
-        $matchingOptions = $this->filterOptionsForSearch($property->publicOptions, $filters);
+        $matchingOptions = $this->filterOptionsForSearch($property, $property->publicOptions, $filters);
         if ($matchingOptions->isEmpty()) {
             return null;
         }
@@ -187,6 +200,7 @@ class PublicPropertyCatalogService
         $gallery = $this->buildGallery($property, $selectedOption);
         $amenities = $this->getOptionAmenities($property, $selectedOption);
         $image = $gallery[0] ?? $property->thumbnail_image;
+        $maxGuests = $this->resolveMaxGuests($property, $selectedOption);
 
         return [
             'id' => (string) $property->id,
@@ -206,7 +220,7 @@ class PublicPropertyCatalogService
             'occupancy_label' => $this->getOccupancyLabel($selectedOption),
             'monthly_rate' => $this->nullableMoney($selectedOption->monthly_rate),
             'nightly_rate' => $this->nullableMoney($selectedOption->nightly_rate),
-            'max_guests' => (int) ($selectedOption->max_guests ?? 0),
+            'max_guests' => $maxGuests,
             'bedrooms' => $bedrooms,
             'bathrooms' => $bathrooms,
             'square_feet' => $squareFeet,
@@ -233,6 +247,7 @@ class PublicPropertyCatalogService
             ->map(function (PublicPropertyOption $option) use ($property) {
                 [$bedrooms, $bathrooms, $squareFeet] = $this->getOptionStats($property, $option);
                 $gallery = $this->buildGallery($property, $option);
+                $maxGuests = $this->resolveMaxGuests($property, $option);
 
                 return [
                     'id' => (string) $option->id,
@@ -243,7 +258,7 @@ class PublicPropertyCatalogService
                     'summary' => $this->getOptionSummary($property, $option),
                     'monthly_rate' => $this->nullableMoney($option->monthly_rate),
                     'nightly_rate' => $this->nullableMoney($option->nightly_rate),
-                    'max_guests' => (int) ($option->max_guests ?? 0),
+                    'max_guests' => $maxGuests,
                     'status' => (int) $option->status,
                     'sort_order' => (int) $option->sort_order,
                     'is_default' => (bool) $option->is_default,
@@ -285,17 +300,19 @@ class PublicPropertyCatalogService
         ];
     }
 
-    private function filterOptionsForSearch(Collection $options, array $filters): Collection
+    private function filterOptionsForSearch(Property $property, Collection $options, array $filters): Collection
     {
         return $options
             ->where('status', ACTIVE)
-            ->filter(function (PublicPropertyOption $option) use ($filters) {
+            ->filter(function (PublicPropertyOption $option) use ($filters, $property) {
                 $rate = $this->getComparableRate($option, $filters['stayMode'] ?? 'months');
                 if ($rate === null) {
                     return false;
                 }
 
-                if (($filters['guests'] ?? null) && (! $option->max_guests || $option->max_guests < $filters['guests'])) {
+                $maxGuests = $this->resolveMaxGuests($property, $option);
+
+                if (($filters['guests'] ?? null) && $maxGuests < $filters['guests']) {
                     return false;
                 }
 
@@ -561,16 +578,57 @@ class PublicPropertyCatalogService
             ];
         }
 
-        $units = PropertyUnit::query()
-            ->where('property_id', $property->id)
-            ->whereNull('deleted_at')
-            ->get();
+        $units = $this->getPropertyUnits($property);
 
         return [
             (int) $units->sum('bedroom'),
             (int) $units->sum('bath'),
             $units->sum(fn (PropertyUnit $unit) => $this->toNullableInt($unit->square_feet) ?? 0),
         ];
+    }
+
+    private function resolveMaxGuests(Property $property, PublicPropertyOption $option): int
+    {
+        $explicitMaxGuests = $this->toNullableInt($option->max_guests);
+        if ($explicitMaxGuests !== null && $explicitMaxGuests > 0) {
+            return $explicitMaxGuests;
+        }
+
+        if ($option->propertyUnit) {
+            $unitMaxGuests = $this->toNullableInt($option->propertyUnit->max_occupancy);
+            return max($unitMaxGuests ?? 0, 1);
+        }
+
+        $units = $this->getPropertyUnits($property);
+        $summedUnitCapacity = (int) $units->sum(
+            fn (PropertyUnit $unit) => max($this->toNullableInt($unit->max_occupancy) ?? 0, 0)
+        );
+
+        if ($summedUnitCapacity > 0) {
+            return $summedUnitCapacity;
+        }
+
+        return max((int) $units->sum('bedroom'), 1);
+    }
+
+    private function getPropertyUnits(Property $property): Collection
+    {
+        if ($property->relationLoaded('propertyUnits')) {
+            return $property->propertyUnits;
+        }
+
+        return PropertyUnit::query()
+            ->where('property_id', $property->id)
+            ->whereNull('deleted_at')
+            ->get([
+                'id',
+                'property_id',
+                'unit_name',
+                'max_occupancy',
+                'bedroom',
+                'bath',
+                'square_feet',
+            ]);
     }
 
     private function nullableMoney($value): ?float
