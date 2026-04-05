@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Property;
 use App\Models\PropertyUnit;
+use App\Models\PublicPropertyBooking;
 use App\Models\PublicPropertyOption;
 use App\Models\PublicPropertyWaitlist;
 use App\Models\Tenant;
@@ -110,9 +111,34 @@ class PublicPropertyAvailabilityService
                 }
             }
 
+            $bookingRecord = PublicPropertyBooking::query()->create([
+                'owner_user_id' => $property->owner_user_id,
+                'property_id' => $property->id,
+                'option_id' => $option->id,
+                'property_unit_id' => $tenant->unit_id ?: $option->property_unit_id,
+                'tenant_id' => $tenant->id,
+                'user_id' => $user->id,
+                'stay_mode' => $payload['stay_mode'],
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+                'guests' => (int) $payload['guests'],
+                'full_name' => $payload['full_name'],
+                'email' => $user->email,
+                'phone' => $this->normalizePhone($payload['phone'] ?? null),
+                'payment_plan' => $payload['payment_plan'],
+                'status' => PublicPropertyBooking::STATUS_CONFIRMED,
+                'source' => 'website',
+                'account_created' => $accountCreated,
+                'setup_email_sent' => $setupEmailSent,
+                'has_assignment' => !is_null($tenant->property_id) && !is_null($tenant->unit_id),
+                'assignment_created' => $assignmentChanged,
+                'confirmed_at' => now(),
+            ]);
+
             DB::commit();
 
             return [
+                'id' => $bookingRecord->id,
                 'property_id' => $property->id,
                 'option_id' => $option->id,
                 'tenant_id' => $tenant->id,

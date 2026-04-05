@@ -25,6 +25,7 @@ use App\Http\Controllers\Owner\TeamMemberController;
 use App\Http\Controllers\Owner\TenantController;
 use App\Http\Controllers\Owner\TicketController;
 use App\Http\Controllers\Owner\TicketTopicController;
+use App\Http\Controllers\Owner\WebsiteLeadController;
 use App\Http\Controllers\Tenancy\DomainController;
 use Illuminate\Support\Facades\Route;
 
@@ -76,6 +77,12 @@ Route::group(['prefix' => 'owner', 'as' => 'owner.', 'middleware' => ['auth', 'o
         Route::get('details/{id}', [TenantController::class, 'details'])->name('details');
         Route::post('close-history-store/{id}', [TenantController::class, 'closeHistoryStore'])->name('close.history.store');
         Route::post('delete', [TenantController::class, 'delete'])->name('delete');
+    });
+
+    Route::group(['prefix' => 'website-leads', 'as' => 'website-leads.'], function () {
+        Route::get('/', [WebsiteLeadController::class, 'index'])->name('index')->middleware('can:Manage Tenant');
+        Route::post('bookings/{id}/status', [WebsiteLeadController::class, 'updateBookingStatus'])->name('booking.status')->middleware('can:Manage Tenant');
+        Route::post('waitlists/{id}/status', [WebsiteLeadController::class, 'updateWaitlistStatus'])->name('waitlist.status')->middleware('can:Manage Tenant');
     });
 
     Route::group(['prefix' => 'information', 'as' => 'information.'], function () {

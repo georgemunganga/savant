@@ -10,6 +10,18 @@ class PublicPropertyWaitlist extends Model
 {
     use HasFactory;
 
+    public const STATUS_PENDING = 'pending';
+    public const STATUS_CONTACTED = 'contacted';
+    public const STATUS_CONVERTED = 'converted';
+    public const STATUS_CLOSED = 'closed';
+
+    public const STATUSES = [
+        self::STATUS_PENDING,
+        self::STATUS_CONTACTED,
+        self::STATUS_CONVERTED,
+        self::STATUS_CLOSED,
+    ];
+
     protected $fillable = [
         'property_id',
         'option_id',

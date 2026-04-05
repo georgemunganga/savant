@@ -66,6 +66,10 @@
                                 <a href="{{ route('owner.tenant.bulk-assignment') }}"
                                     class="{{ @$subNavTenantBulkActiveClass }}">{{ __('Bulk Unit Assignment') }}</a>
                             </li>
+                            <li class="{{ @$subNavWebsiteLeadsMMActiveClass }}">
+                                <a href="{{ route('owner.website-leads.index') }}"
+                                    class="{{ @$subNavWebsiteLeadsActiveClass }}">{{ __('Website Leads') }}</a>
+                            </li>
                             <li class="{{ @$subNavTenantAllUnitMMActiveClass }}">
                                 <a href="{{ route('owner.property.allUnit') }}"
                                     class="{{ @$subNavTenantAllUnitActiveClass }}">{{ __('All Unit') }}</a>

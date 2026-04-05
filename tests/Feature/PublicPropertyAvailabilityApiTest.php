@@ -6,6 +6,7 @@ use App\Mail\TenantPortalActionMail;
 use App\Models\Property;
 use App\Models\PropertyDetail;
 use App\Models\PropertyUnit;
+use App\Models\PublicPropertyBooking;
 use App\Models\PublicPropertyOption;
 use App\Models\Tenant;
 use App\Models\TenantUnitAssignment;
@@ -201,6 +202,13 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'tenant_id' => $tenant->id,
             'property_id' => $property->id,
             'unit_id' => $unit->id,
+        ]);
+        $this->assertDatabaseHas('public_property_bookings', [
+            'property_id' => $property->id,
+            'option_id' => $option->id,
+            'tenant_id' => $tenant->id,
+            'email' => 'jane@example.com',
+            'status' => PublicPropertyBooking::STATUS_CONFIRMED,
         ]);
 
         Mail::assertSent(TenantPortalActionMail::class, 2);
