@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Owner;
 
 use App\Http\Controllers\Controller;
+use App\Models\Invoice;
 use App\Models\Property;
 use App\Models\PropertyUnit;
 use App\Models\PublicPropertyBooking;
@@ -87,6 +88,7 @@ class WebsiteLeadController extends Controller
             $this->applyCommonFilters($query, $data['filters']);
 
             $data['records'] = $query->paginate(12)->withQueryString();
+            $this->appendBookingBillingState($data['records']);
         }
 
         return view('owner.website-leads.index', $data);
@@ -212,5 +214,58 @@ class WebsiteLeadController extends Controller
                     ->orWhere('phone', 'like', '%' . $search . '%');
             });
         }
+    }
+
+    private function appendBookingBillingState($records): void
+    {
+        $tenantIds = $records->getCollection()
+            ->pluck('tenant_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($tenantIds->isEmpty()) {
+            return;
+        }
+
+        $pendingInvoicesByTenant = Invoice::query()
+            ->with(['property:id,name', 'propertyUnit:id,unit_name'])
+            ->whereIn('tenant_id', $tenantIds)
+            ->whereIn('status', [
+                INVOICE_STATUS_PENDING,
+                INVOICE_STATUS_OVER_DUE,
+            ])
+            ->orderByRaw(
+                'CASE WHEN status = ? THEN 0 ELSE 1 END',
+                [INVOICE_STATUS_OVER_DUE]
+            )
+            ->orderBy('due_date')
+            ->orderBy('id')
+            ->get()
+            ->groupBy('tenant_id');
+
+        $records->setCollection(
+            $records->getCollection()->map(function (PublicPropertyBooking $record) use ($pendingInvoicesByTenant) {
+                $invoice = $pendingInvoicesByTenant->get($record->tenant_id)?->first();
+
+                $record->billing_status = $invoice ? 'pending_fee' : 'clear';
+                $record->pending_invoice_summary = $invoice
+                    ? [
+                        'invoice_no' => $invoice->invoice_no ?: ('#' . $invoice->id),
+                        'amount_due' => (float) ($invoice->amount ?? 0) + (
+                            (int) $invoice->status === INVOICE_STATUS_OVER_DUE
+                                ? (float) ($invoice->late_fee ?? 0)
+                                : 0
+                        ),
+                        'due_date' => $invoice->due_date,
+                        'property_name' => $invoice->property?->name,
+                        'unit_name' => $invoice->propertyUnit?->unit_name,
+                        'status' => (int) $invoice->status === INVOICE_STATUS_OVER_DUE ? 'overdue' : 'pending',
+                    ]
+                    : null;
+
+                return $record;
+            })
+        );
     }
 }

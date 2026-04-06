@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\TenantPortalActionMail;
+use App\Models\Invoice;
 use App\Models\Property;
 use App\Models\PropertyDetail;
 use App\Models\PropertyUnit;
@@ -559,6 +560,187 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'property_unit_id' => null,
             'has_assignment' => false,
             'assignment_created' => false,
+        ]);
+
+        Mail::assertNothingSent();
+    }
+
+    public function test_booking_confirm_blocks_additional_booking_when_existing_tenant_has_a_pending_invoice(): void
+    {
+        Mail::fake();
+        $this->enableTenantPortalMail();
+
+        $owner = $this->createOwnerUser();
+        [$firstProperty, $firstUnit] = $this->createPublicPropertyWithUnit([
+            'owner_user_id' => $owner->id,
+            'slug' => 'existing-stay-property',
+        ]);
+        [$secondProperty, , $secondOption] = $this->createPublicPropertyWithUnit([
+            'owner_user_id' => $owner->id,
+            'slug' => 'new-booking-property',
+        ]);
+
+        $user = User::query()->forceCreate([
+            'first_name' => 'Repeat',
+            'last_name' => 'Tenant',
+            'email' => 'pending-fee@example.com',
+            'password' => Hash::make('secret123!'),
+            'status' => USER_STATUS_ACTIVE,
+            'role' => USER_ROLE_TENANT,
+            'owner_user_id' => $owner->id,
+            'email_verified_at' => now(),
+        ]);
+
+        $tenant = Tenant::query()->forceCreate([
+            'user_id' => $user->id,
+            'owner_user_id' => $owner->id,
+            'job' => 'Engineer',
+            'family_member' => 1,
+            'property_id' => $firstProperty->id,
+            'unit_id' => $firstUnit->id,
+            'lease_start_date' => '2026-05-01',
+            'lease_end_date' => '2026-06-01',
+            'rent_type' => RENT_TYPE_MONTHLY,
+            'general_rent' => 12000,
+            'security_deposit' => 0,
+            'late_fee' => 250,
+            'incident_receipt' => 0,
+            'status' => TENANT_STATUS_ACTIVE,
+        ]);
+
+        TenantUnitAssignment::query()->forceCreate([
+            'tenant_id' => $tenant->id,
+            'property_id' => $firstProperty->id,
+            'unit_id' => $firstUnit->id,
+        ]);
+
+        $invoice = Invoice::query()->forceCreate([
+            'tenant_id' => $tenant->id,
+            'owner_user_id' => $owner->id,
+            'property_id' => $firstProperty->id,
+            'property_unit_id' => $firstUnit->id,
+            'name' => 'Rent Invoice',
+            'invoice_no' => 'INV-PENDING-' . random_int(1000, 9999),
+            'month' => '2026-05',
+            'due_date' => '2026-05-15',
+            'amount' => 12000,
+            'status' => INVOICE_STATUS_PENDING,
+            'late_fee' => 0,
+        ]);
+
+        $this->postJson("/api/public/properties/{$secondProperty->id}/bookings/confirm", [
+            'option_id' => $secondOption->id,
+            'stay_mode' => 'months',
+            'start_date' => '2026-07-01',
+            'end_date' => '2026-08-01',
+            'guests' => 1,
+            'full_name' => 'Repeat Tenant',
+            'email' => 'pending-fee@example.com',
+            'phone' => '+260971111111',
+            'payment_plan' => 'later',
+        ])
+            ->assertOk()
+            ->assertJsonPath('status', true)
+            ->assertJsonPath('data.requires_fee_clearance', true)
+            ->assertJsonPath('data.pending_fee.invoice_id', $invoice->id)
+            ->assertJsonPath('data.pending_fee.invoice_no', $invoice->invoice_no)
+            ->assertJsonPath('data.pending_fee.amount_due', 12000)
+            ->assertJsonPath('data.requires_confirmation', false);
+
+        $this->assertDatabaseMissing('public_property_bookings', [
+            'tenant_id' => $tenant->id,
+            'property_id' => $secondProperty->id,
+        ]);
+
+        Mail::assertNothingSent();
+    }
+
+    public function test_booking_confirm_blocks_additional_booking_when_existing_tenant_has_an_overdue_invoice(): void
+    {
+        Mail::fake();
+        $this->enableTenantPortalMail();
+
+        $owner = $this->createOwnerUser();
+        [$firstProperty, $firstUnit] = $this->createPublicPropertyWithUnit([
+            'owner_user_id' => $owner->id,
+            'slug' => 'existing-stay-property',
+        ]);
+        [$secondProperty, , $secondOption] = $this->createPublicPropertyWithUnit([
+            'owner_user_id' => $owner->id,
+            'slug' => 'new-booking-property',
+        ]);
+
+        $user = User::query()->forceCreate([
+            'first_name' => 'Repeat',
+            'last_name' => 'Tenant',
+            'email' => 'overdue-fee@example.com',
+            'password' => Hash::make('secret123!'),
+            'status' => USER_STATUS_ACTIVE,
+            'role' => USER_ROLE_TENANT,
+            'owner_user_id' => $owner->id,
+            'email_verified_at' => now(),
+        ]);
+
+        $tenant = Tenant::query()->forceCreate([
+            'user_id' => $user->id,
+            'owner_user_id' => $owner->id,
+            'job' => 'Engineer',
+            'family_member' => 1,
+            'property_id' => $firstProperty->id,
+            'unit_id' => $firstUnit->id,
+            'lease_start_date' => '2026-05-01',
+            'lease_end_date' => '2026-06-01',
+            'rent_type' => RENT_TYPE_MONTHLY,
+            'general_rent' => 12000,
+            'security_deposit' => 0,
+            'late_fee' => 300,
+            'incident_receipt' => 0,
+            'status' => TENANT_STATUS_ACTIVE,
+        ]);
+
+        TenantUnitAssignment::query()->forceCreate([
+            'tenant_id' => $tenant->id,
+            'property_id' => $firstProperty->id,
+            'unit_id' => $firstUnit->id,
+        ]);
+
+        $invoice = Invoice::query()->forceCreate([
+            'tenant_id' => $tenant->id,
+            'owner_user_id' => $owner->id,
+            'property_id' => $firstProperty->id,
+            'property_unit_id' => $firstUnit->id,
+            'name' => 'Rent Invoice',
+            'invoice_no' => 'INV-OVERDUE-' . random_int(1000, 9999),
+            'month' => '2026-05',
+            'due_date' => '2026-05-15',
+            'amount' => 12000,
+            'status' => INVOICE_STATUS_OVER_DUE,
+            'late_fee' => 300,
+        ]);
+
+        $this->postJson("/api/public/properties/{$secondProperty->id}/bookings/confirm", [
+            'option_id' => $secondOption->id,
+            'stay_mode' => 'months',
+            'start_date' => '2026-07-01',
+            'end_date' => '2026-08-01',
+            'guests' => 1,
+            'full_name' => 'Repeat Tenant',
+            'email' => 'overdue-fee@example.com',
+            'phone' => '+260971111111',
+            'payment_plan' => 'later',
+        ])
+            ->assertOk()
+            ->assertJsonPath('status', true)
+            ->assertJsonPath('data.requires_fee_clearance', true)
+            ->assertJsonPath('data.pending_fee.invoice_id', $invoice->id)
+            ->assertJsonPath('data.pending_fee.invoice_no', $invoice->invoice_no)
+            ->assertJsonPath('data.pending_fee.amount_due', 12300)
+            ->assertJsonPath('data.pending_fee.status', 'overdue')
+            ->assertJsonPath('data.requires_confirmation', false);
+
+        $this->assertDatabaseMissing('public_property_bookings', [
+            'tenant_id' => $tenant->id,
+            'property_id' => $secondProperty->id,
         ]);
 
         Mail::assertNothingSent();

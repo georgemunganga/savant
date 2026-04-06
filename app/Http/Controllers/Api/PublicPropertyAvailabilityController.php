@@ -74,9 +74,11 @@ class PublicPropertyAvailabilityController extends Controller
 
             return $this->success(
                 $result,
-                !empty($result['requires_confirmation'])
-                    ? 'Existing booking confirmation required'
-                    : 'Booking confirmed successfully'
+                !empty($result['requires_fee_clearance'])
+                    ? 'Pending fee clearance required'
+                    : (!empty($result['requires_confirmation'])
+                        ? 'Existing booking confirmation required'
+                        : 'Booking confirmed successfully')
             );
         } catch (ModelNotFoundException $e) {
             return response()->json([

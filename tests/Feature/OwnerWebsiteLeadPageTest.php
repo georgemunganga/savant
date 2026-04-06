@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Property;
 use App\Models\PropertyDetail;
 use App\Models\PropertyUnit;
+use App\Models\Invoice;
 use App\Models\PublicPropertyBooking;
 use App\Models\PublicPropertyOption;
 use App\Models\PublicPropertyWaitlist;
@@ -439,6 +440,137 @@ class OwnerWebsiteLeadPageTest extends TestCase
             'option_id' => $firstOption->id,
             'has_assignment' => false,
         ]);
+    }
+
+    public function test_owner_booking_cards_show_pending_fee_or_clear_from_tenant_invoices(): void
+    {
+        $owner = $this->createOwnerUser();
+        [$property, $unit, $option] = $this->createPublicPropertyWithUnit($owner->id);
+
+        $pendingUser = User::query()->forceCreate([
+            'first_name' => 'Pending',
+            'last_name' => 'Fee',
+            'email' => 'pending-fee@example.com',
+            'password' => Hash::make('secret123'),
+            'status' => USER_STATUS_ACTIVE,
+            'role' => USER_ROLE_TENANT,
+            'owner_user_id' => $owner->id,
+        ]);
+        $pendingTenant = Tenant::query()->forceCreate([
+            'user_id' => $pendingUser->id,
+            'owner_user_id' => $owner->id,
+            'job' => 'Engineer',
+            'family_member' => 1,
+            'property_id' => $property->id,
+            'unit_id' => $unit->id,
+            'rent_type' => RENT_TYPE_MONTHLY,
+            'general_rent' => 0,
+            'security_deposit' => 0,
+            'late_fee' => 0,
+            'incident_receipt' => 0,
+            'status' => TENANT_STATUS_ACTIVE,
+        ]);
+        Invoice::query()->forceCreate([
+            'tenant_id' => $pendingTenant->id,
+            'owner_user_id' => $owner->id,
+            'property_id' => $property->id,
+            'property_unit_id' => $unit->id,
+            'name' => 'Rent Invoice',
+            'invoice_no' => 'INV-PENDING-' . random_int(1000, 9999),
+            'month' => '2026-05',
+            'due_date' => '2026-05-15',
+            'amount' => 12000,
+            'status' => INVOICE_STATUS_PENDING,
+            'late_fee' => 0,
+        ]);
+        PublicPropertyBooking::query()->create([
+            'owner_user_id' => $owner->id,
+            'property_id' => $property->id,
+            'option_id' => $option->id,
+            'property_unit_id' => null,
+            'tenant_id' => $pendingTenant->id,
+            'user_id' => $pendingUser->id,
+            'stay_mode' => 'months',
+            'start_date' => '2026-05-01',
+            'end_date' => '2026-06-01',
+            'guests' => 1,
+            'full_name' => 'Pending Fee Guest',
+            'email' => 'pending-fee@example.com',
+            'phone' => '+260971111111',
+            'payment_plan' => 'later',
+            'status' => PublicPropertyBooking::STATUS_CONFIRMED,
+            'source' => 'website',
+            'has_assignment' => false,
+            'assignment_created' => false,
+            'confirmed_at' => now(),
+        ]);
+
+        $clearUser = User::query()->forceCreate([
+            'first_name' => 'Clear',
+            'last_name' => 'Guest',
+            'email' => 'clear@example.com',
+            'password' => Hash::make('secret123'),
+            'status' => USER_STATUS_ACTIVE,
+            'role' => USER_ROLE_TENANT,
+            'owner_user_id' => $owner->id,
+        ]);
+        $clearTenant = Tenant::query()->forceCreate([
+            'user_id' => $clearUser->id,
+            'owner_user_id' => $owner->id,
+            'job' => 'Engineer',
+            'family_member' => 1,
+            'property_id' => $property->id,
+            'unit_id' => $unit->id,
+            'rent_type' => RENT_TYPE_MONTHLY,
+            'general_rent' => 0,
+            'security_deposit' => 0,
+            'late_fee' => 0,
+            'incident_receipt' => 0,
+            'status' => TENANT_STATUS_ACTIVE,
+        ]);
+        Invoice::query()->forceCreate([
+            'tenant_id' => $clearTenant->id,
+            'owner_user_id' => $owner->id,
+            'property_id' => $property->id,
+            'property_unit_id' => $unit->id,
+            'name' => 'Paid Invoice',
+            'invoice_no' => 'INV-PAID-' . random_int(1000, 9999),
+            'month' => '2026-04',
+            'due_date' => '2026-04-15',
+            'amount' => 12000,
+            'status' => INVOICE_STATUS_PAID,
+            'late_fee' => 0,
+        ]);
+        PublicPropertyBooking::query()->create([
+            'owner_user_id' => $owner->id,
+            'property_id' => $property->id,
+            'option_id' => $option->id,
+            'property_unit_id' => null,
+            'tenant_id' => $clearTenant->id,
+            'user_id' => $clearUser->id,
+            'stay_mode' => 'months',
+            'start_date' => '2026-06-01',
+            'end_date' => '2026-07-01',
+            'guests' => 1,
+            'full_name' => 'Clear Guest',
+            'email' => 'clear@example.com',
+            'phone' => '+260972222222',
+            'payment_plan' => 'later',
+            'status' => PublicPropertyBooking::STATUS_CONFIRMED,
+            'source' => 'website',
+            'has_assignment' => false,
+            'assignment_created' => false,
+            'confirmed_at' => now(),
+        ]);
+
+        $this->actingAs($owner);
+
+        $this->get(route('owner.website-leads.index'))
+            ->assertOk()
+            ->assertSee('Pending Fee Guest')
+            ->assertSee('Pending fee')
+            ->assertSee('Clear Guest')
+            ->assertSee('Clear');
     }
 
     private function createOwnerUser(): User

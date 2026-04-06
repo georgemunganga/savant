@@ -180,6 +180,37 @@
                                                     <span class="font-13 color-heading">{{ __('Payment Plan') }}</span>
                                                     <span class="font-13">{{ ucfirst($record->payment_plan ?? 'later') }}</span>
                                                 </div>
+                                                <div class="py-2 px-0" style="border-bottom: 1px solid rgba(0,0,0,0.08);">
+                                                    <div class="d-flex justify-content-between align-items-center gap-3">
+                                                        <span class="font-13 color-heading">{{ __('Billing') }}</span>
+                                                        @if (($record->billing_status ?? 'clear') === 'pending_fee')
+                                                            <span class="radius-4 px-2 py-1 font-13 bg-orange-transparent orange-color">
+                                                                {{ __('Pending fee') }}
+                                                            </span>
+                                                        @else
+                                                            <span class="radius-4 px-2 py-1 font-13 bg-green-transparent green-color">
+                                                                {{ __('Clear') }}
+                                                            </span>
+                                                        @endif
+                                                    </div>
+                                                    @if (!empty($record->pending_invoice_summary))
+                                                        <p class="font-13 mt-2 mb-0">
+                                                            {{ $record->pending_invoice_summary['invoice_no'] ?? __('Invoice pending') }}
+                                                            · {{ number_format((float) ($record->pending_invoice_summary['amount_due'] ?? 0), 2) }}
+                                                            @if (!empty($record->pending_invoice_summary['due_date']))
+                                                                · {{ \Carbon\Carbon::parse($record->pending_invoice_summary['due_date'])->format('d M Y') }}
+                                                            @endif
+                                                        </p>
+                                                        @if (!empty($record->pending_invoice_summary['property_name']) || !empty($record->pending_invoice_summary['unit_name']))
+                                                            <p class="font-13 color-heading mt-1 mb-0">
+                                                                {{ $record->pending_invoice_summary['property_name'] ?? __('Property pending') }}
+                                                                @if (!empty($record->pending_invoice_summary['unit_name']))
+                                                                    · {{ $record->pending_invoice_summary['unit_name'] }}
+                                                                @endif
+                                                            </p>
+                                                        @endif
+                                                    @endif
+                                                </div>
                                                 <div class="py-2 px-0 d-flex justify-content-between align-items-center" style="border-bottom: 1px solid rgba(0,0,0,0.08);">
                                                     <span class="font-13 color-heading">{{ __('Assignment') }}</span>
                                                     <span class="font-13">
