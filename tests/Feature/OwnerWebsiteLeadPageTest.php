@@ -13,6 +13,8 @@ use App\Models\Language;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\TenantPortalActionMail;
 use Tests\TestCase;
 
 class OwnerWebsiteLeadPageTest extends TestCase
@@ -82,6 +84,28 @@ class OwnerWebsiteLeadPageTest extends TestCase
             'confirmed_at' => now(),
         ]);
 
+        PublicPropertyBooking::query()->create([
+            'owner_user_id' => $owner->id,
+            'property_id' => $property->id,
+            'option_id' => $option->id,
+            'property_unit_id' => null,
+            'tenant_id' => $tenant->id,
+            'user_id' => $tenantUser->id,
+            'stay_mode' => 'months',
+            'start_date' => '2026-06-01',
+            'end_date' => '2026-07-01',
+            'guests' => 1,
+            'full_name' => 'Pending Assignment Guest',
+            'email' => 'pending-assignment@example.com',
+            'phone' => '+260974444444',
+            'payment_plan' => 'later',
+            'status' => PublicPropertyBooking::STATUS_CONFIRMED,
+            'source' => 'website',
+            'has_assignment' => false,
+            'assignment_created' => false,
+            'confirmed_at' => now(),
+        ]);
+
         PublicPropertyWaitlist::query()->create([
             'property_id' => $property->id,
             'option_id' => $option->id,
@@ -101,7 +125,8 @@ class OwnerWebsiteLeadPageTest extends TestCase
             ->assertOk()
             ->assertSee('Website Leads')
             ->assertSee('Booked Guest')
-            ->assertSee('Live Bookings');
+            ->assertSee('Live Bookings')
+            ->assertSee('Assign tenant to unit');
 
         $this->get(route('owner.website-leads.index', ['tab' => 'waitlist']))
             ->assertOk()
@@ -168,6 +193,84 @@ class OwnerWebsiteLeadPageTest extends TestCase
         ]);
     }
 
+    public function test_owner_can_assign_a_pending_booking_to_a_unit_and_send_assignment_email(): void
+    {
+        Mail::fake();
+        $this->enableTenantPortalMail();
+
+        $owner = $this->createOwnerUser();
+        [$property, $unit, $option] = $this->createPublicPropertyWithUnit($owner->id);
+        $tenantUser = User::query()->forceCreate([
+            'first_name' => 'Pending',
+            'last_name' => 'Guest',
+            'email' => 'pending@example.com',
+            'password' => Hash::make('secret123'),
+            'status' => USER_STATUS_ACTIVE,
+            'role' => USER_ROLE_TENANT,
+            'owner_user_id' => $owner->id,
+            'email_verified_at' => now(),
+        ]);
+        $tenant = Tenant::query()->forceCreate([
+            'user_id' => $tenantUser->id,
+            'owner_user_id' => $owner->id,
+            'job' => 'Engineer',
+            'family_member' => 1,
+            'property_id' => $property->id,
+            'unit_id' => null,
+            'lease_start_date' => '2026-05-01',
+            'lease_end_date' => '2026-06-01',
+            'rent_type' => RENT_TYPE_MONTHLY,
+            'general_rent' => 12000,
+            'security_deposit' => 0,
+            'late_fee' => 0,
+            'incident_receipt' => 0,
+            'status' => TENANT_STATUS_ACTIVE,
+        ]);
+
+        $booking = PublicPropertyBooking::query()->create([
+            'owner_user_id' => $owner->id,
+            'property_id' => $property->id,
+            'option_id' => $option->id,
+            'property_unit_id' => null,
+            'tenant_id' => $tenant->id,
+            'user_id' => $tenantUser->id,
+            'stay_mode' => 'months',
+            'start_date' => '2026-05-01',
+            'end_date' => '2026-06-01',
+            'guests' => 1,
+            'full_name' => 'Pending Guest',
+            'email' => 'pending@example.com',
+            'phone' => '+260973333333',
+            'payment_plan' => 'later',
+            'status' => PublicPropertyBooking::STATUS_CONFIRMED,
+            'source' => 'website',
+            'has_assignment' => false,
+            'assignment_created' => false,
+            'confirmed_at' => now(),
+        ]);
+
+        $this->actingAs($owner);
+
+        $this->post(route('owner.website-leads.booking.assign-unit', $booking->id), [
+            'unit_id' => $unit->id,
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('tenants', [
+            'id' => $tenant->id,
+            'property_id' => $property->id,
+            'unit_id' => $unit->id,
+        ]);
+
+        $this->assertDatabaseHas('public_property_bookings', [
+            'id' => $booking->id,
+            'property_unit_id' => $unit->id,
+            'has_assignment' => true,
+            'assignment_created' => true,
+        ]);
+
+        Mail::assertSent(TenantPortalActionMail::class, 1);
+    }
+
     private function createOwnerUser(): User
     {
         return User::query()->forceCreate([
@@ -229,5 +332,20 @@ class OwnerWebsiteLeadPageTest extends TestCase
         ]);
 
         return [$property, $unit, $option];
+    }
+
+    private function enableTenantPortalMail(): void
+    {
+        config([
+            'settings.app_name' => 'Savant',
+            'settings.send_email_status' => ACTIVE,
+        ]);
+
+        putenv('MAIL_STATUS=1');
+        putenv('MAIL_USERNAME=tester@example.test');
+        $_ENV['MAIL_STATUS'] = '1';
+        $_ENV['MAIL_USERNAME'] = 'tester@example.test';
+        $_SERVER['MAIL_STATUS'] = '1';
+        $_SERVER['MAIL_USERNAME'] = 'tester@example.test';
     }
 }

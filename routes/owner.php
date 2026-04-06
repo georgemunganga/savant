@@ -81,6 +81,7 @@ Route::group(['prefix' => 'owner', 'as' => 'owner.', 'middleware' => ['auth', 'o
 
     Route::group(['prefix' => 'website-leads', 'as' => 'website-leads.'], function () {
         Route::get('/', [WebsiteLeadController::class, 'index'])->name('index')->middleware('can:Manage Tenant');
+        Route::post('bookings/{id}/assign-unit', [WebsiteLeadController::class, 'assignBookingUnit'])->name('booking.assign-unit')->middleware('can:Manage Tenant');
         Route::post('bookings/{id}/status', [WebsiteLeadController::class, 'updateBookingStatus'])->name('booking.status')->middleware('can:Manage Tenant');
         Route::post('waitlists/{id}/status', [WebsiteLeadController::class, 'updateWaitlistStatus'])->name('waitlist.status')->middleware('can:Manage Tenant');
     });

@@ -723,6 +723,70 @@ class TenantService
         }
     }
 
+    public function assignTenantToPrimaryUnit(
+        Tenant $tenant,
+        int $propertyId,
+        int $unitId,
+        array $attributes = [],
+        bool $sendEmail = true
+    ): bool {
+        DB::beginTransaction();
+
+        try {
+            $assignmentChanged = $this->tenantAssignmentChanged($tenant, [
+                'property_id' => $propertyId,
+                'unit_id' => $unitId,
+                'lease_start_date' => $attributes['lease_start_date'] ?? $tenant->lease_start_date,
+                'lease_end_date' => $attributes['lease_end_date'] ?? $tenant->lease_end_date,
+            ]);
+
+            $this->ensureUnitOccupancyLimit($propertyId, $unitId, (int) $tenant->id);
+            $this->unitHistoryService->syncPrimaryAssignment(
+                $tenant,
+                $propertyId,
+                $unitId,
+                auth()->id()
+            );
+
+            $tenant->property_id = $propertyId;
+            $tenant->unit_id = $unitId;
+
+            if (array_key_exists('lease_start_date', $attributes)) {
+                $tenant->lease_start_date = $attributes['lease_start_date'];
+            }
+
+            if (array_key_exists('lease_end_date', $attributes)) {
+                $tenant->lease_end_date = $attributes['lease_end_date'];
+            }
+
+            if (array_key_exists('due_date', $attributes)) {
+                $tenant->due_date = $attributes['due_date'];
+            }
+
+            if (array_key_exists('general_rent', $attributes)) {
+                $tenant->general_rent = $attributes['general_rent'];
+            }
+
+            $tenant->save();
+
+            DB::commit();
+        } catch (Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
+
+        if ($assignmentChanged && $sendEmail && getOption('send_email_status', 0) == ACTIVE) {
+            $this->tenantAccessService->sendAssignmentEmail(
+                $tenant->fresh(['user', 'property', 'unit']),
+                null,
+                null,
+                getOwnerUserId()
+            );
+        }
+
+        return $assignmentChanged;
+    }
+
     private function ensureUnitOccupancyLimit(int $propertyId, int $unitId, ?int $excludeTenantId = null): void
     {
         $selectColumns = [

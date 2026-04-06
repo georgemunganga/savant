@@ -117,6 +117,12 @@
 
                     <div class="row">
                         @forelse ($records as $record)
+                            @php
+                                $bookingUnits = collect();
+                                if ($activeTab === 'bookings' && isset($unitsByPropertyId)) {
+                                    $bookingUnits = $unitsByPropertyId->get($record->property_id, collect());
+                                }
+                            @endphp
                             <div class="col-md-6 col-xl-6 col-xxl-4">
                                 <div class="property-item tenants-item bg-off-white theme-border radius-10 mb-25 h-100">
                                     <div class="property-item-content tenants-item-content p-20">
@@ -192,22 +198,49 @@
                                             @endif
                                         </div>
 
-                                        <form
-                                            action="{{ $activeTab === 'bookings' ? route('owner.website-leads.booking.status', $record->id) : route('owner.website-leads.waitlist.status', $record->id) }}"
-                                            method="POST"
-                                            class="mt-20"
-                                        >
-                                            @csrf
-                                            <label class="font-13 color-heading mb-2 d-block">{{ __('Update Status') }}</label>
-                                            <div class="d-flex gap-2">
-                                                <select name="status" class="form-select">
-                                                    @foreach (($activeTab === 'bookings' ? $bookingStatuses : $waitlistStatuses) as $status)
-                                                        <option value="{{ $status }}" @selected($record->status === $status)>{{ ucwords(str_replace('_', ' ', $status)) }}</option>
-                                                    @endforeach
-                                                </select>
-                                                <button type="submit" class="theme-btn w-auto">{{ __('Save') }}</button>
-                                            </div>
-                                        </form>
+                                        @if ($activeTab === 'bookings' && !$record->has_assignment && $record->tenant_id && !in_array($record->status, ['completed', 'cancelled'], true))
+                                            <form
+                                                action="{{ route('owner.website-leads.booking.assign-unit', $record->id) }}"
+                                                method="POST"
+                                                class="mt-20"
+                                            >
+                                                @csrf
+                                                <label class="font-13 color-heading mb-2 d-block">{{ __('Assign tenant to unit') }}</label>
+                                                @if ($bookingUnits->isEmpty())
+                                                    <p class="font-13 color-heading mb-0">{{ __('No units are available under this property yet.') }}</p>
+                                                @else
+                                                    <div class="d-flex gap-2">
+                                                        <select name="unit_id" class="form-select">
+                                                            <option value="">{{ __('Select Unit') }}</option>
+                                                            @foreach ($bookingUnits as $unit)
+                                                                <option value="{{ $unit->id }}">{{ $unit->unit_name }}</option>
+                                                            @endforeach
+                                                        </select>
+                                                        <button type="submit" class="theme-btn w-auto">{{ __('Assign') }}</button>
+                                                    </div>
+                                                    <p class="font-13 color-heading mt-2 mb-0">
+                                                        {{ __('This uses the same tenant assignment flow and sends the normal assignment email.') }}
+                                                    </p>
+                                                @endif
+                                            </form>
+                                        @else
+                                            <form
+                                                action="{{ $activeTab === 'bookings' ? route('owner.website-leads.booking.status', $record->id) : route('owner.website-leads.waitlist.status', $record->id) }}"
+                                                method="POST"
+                                                class="mt-20"
+                                            >
+                                                @csrf
+                                                <label class="font-13 color-heading mb-2 d-block">{{ __('Update Status') }}</label>
+                                                <div class="d-flex gap-2">
+                                                    <select name="status" class="form-select">
+                                                        @foreach (($activeTab === 'bookings' ? $bookingStatuses : $waitlistStatuses) as $status)
+                                                            <option value="{{ $status }}" @selected($record->status === $status)>{{ ucwords(str_replace('_', ' ', $status)) }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                    <button type="submit" class="theme-btn w-auto">{{ __('Save') }}</button>
+                                                </div>
+                                            </form>
+                                        @endif
                                     </div>
                                 </div>
                             </div>

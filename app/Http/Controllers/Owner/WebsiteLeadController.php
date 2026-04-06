@@ -4,14 +4,21 @@ namespace App\Http\Controllers\Owner;
 
 use App\Http\Controllers\Controller;
 use App\Models\Property;
+use App\Models\PropertyUnit;
 use App\Models\PublicPropertyBooking;
 use App\Models\PublicPropertyWaitlist;
+use App\Services\TenantService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class WebsiteLeadController extends Controller
 {
+    public function __construct(
+        private readonly TenantService $tenantService = new TenantService()
+    ) {
+    }
+
     public function index(Request $request): View
     {
         $activeTab = $request->get('tab', 'bookings') === 'waitlist' ? 'waitlist' : 'bookings';
@@ -72,6 +79,13 @@ class WebsiteLeadController extends Controller
             $this->applyCommonFilters($query, $data['filters']);
 
             $data['records'] = $query->paginate(12)->withQueryString();
+            $propertyIds = $data['records']->getCollection()->pluck('property_id')->filter()->unique()->values();
+            $data['unitsByPropertyId'] = PropertyUnit::query()
+                ->whereIn('property_id', $propertyIds)
+                ->whereNull('deleted_at')
+                ->orderBy('unit_name')
+                ->get(['id', 'property_id', 'unit_name', 'max_occupancy'])
+                ->groupBy('property_id');
         }
 
         return view('owner.website-leads.index', $data);
@@ -91,6 +105,55 @@ class WebsiteLeadController extends Controller
         $booking->save();
 
         return back()->with('success', __('Booking status updated successfully.'));
+    }
+
+    public function assignBookingUnit(Request $request, int $id): RedirectResponse
+    {
+        $validated = $request->validate([
+            'unit_id' => ['required', 'integer'],
+        ]);
+
+        $booking = PublicPropertyBooking::query()
+            ->with(['tenant.user', 'property', 'unit'])
+            ->where('owner_user_id', getOwnerUserId())
+            ->findOrFail($id);
+
+        if (!$booking->tenant) {
+            return back()->with('error', __('This booking is not linked to a tenant account.'));
+        }
+
+        if (in_array($booking->status, [
+            PublicPropertyBooking::STATUS_CANCELLED,
+            PublicPropertyBooking::STATUS_COMPLETED,
+        ], true)) {
+            return back()->with('error', __('This booking can no longer be assigned from the leads page.'));
+        }
+
+        if ($booking->has_assignment && !is_null($booking->property_unit_id)) {
+            return back()->with('error', __('This booking already has an assigned unit.'));
+        }
+
+        $unit = PropertyUnit::query()
+            ->where('property_id', $booking->property_id)
+            ->whereNull('deleted_at')
+            ->findOrFail((int) $validated['unit_id']);
+
+        $assignmentChanged = $this->tenantService->assignTenantToPrimaryUnit(
+            $booking->tenant,
+            (int) $booking->property_id,
+            (int) $unit->id,
+            [
+                'lease_start_date' => optional($booking->start_date)->toDateString(),
+                'lease_end_date' => optional($booking->end_date)->toDateString(),
+            ]
+        );
+
+        $booking->property_unit_id = $unit->id;
+        $booking->has_assignment = true;
+        $booking->assignment_created = $booking->assignment_created || $assignmentChanged;
+        $booking->save();
+
+        return back()->with('success', __('Tenant assigned to unit successfully.'));
     }
 
     public function updateWaitlistStatus(Request $request, int $id): RedirectResponse
