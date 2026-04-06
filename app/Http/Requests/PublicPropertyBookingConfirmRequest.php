@@ -9,6 +9,7 @@ class PublicPropertyBookingConfirmRequest extends PublicPropertyAvailabilityRequ
         return array_merge(parent::rules(), [
             'phone' => 'nullable|string|max:30',
             'payment_plan' => 'required|string|in:now,later',
+            'confirm_existing_booking' => 'nullable|boolean',
         ]);
     }
 }

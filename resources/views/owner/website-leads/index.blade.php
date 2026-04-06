@@ -19,7 +19,7 @@
         };
         $optionLabel = function ($option) {
             if (!$option) {
-                return __('N/A');
+                return __('Manual assignment');
             }
 
             if ($option->rental_kind === 'whole_property') {
@@ -36,6 +36,18 @@
 
             return ucwords(str_replace('_', ' ', (string) $option->rental_kind));
         };
+        $unitsJson = isset($unitsByPropertyId)
+            ? $unitsByPropertyId
+                ->map(fn ($units) => $units
+                    ->map(fn ($unit) => [
+                        'id' => (string) $unit->id,
+                        'unit_name' => $unit->unit_name,
+                    ])
+                    ->values()
+                    ->all()
+                )
+                ->toArray()
+            : [];
     @endphp
 
     <div class="main-content">
@@ -122,6 +134,10 @@
                                 if ($activeTab === 'bookings' && isset($unitsByPropertyId)) {
                                     $bookingUnits = $unitsByPropertyId->get($record->property_id, collect());
                                 }
+                                $canAssignBooking = $activeTab === 'bookings'
+                                    && !$record->has_assignment
+                                    && $record->tenant_id
+                                    && !in_array($record->status, ['completed', 'cancelled'], true);
                             @endphp
                             <div class="col-md-6 col-xl-6 col-xxl-4">
                                 <div class="property-item tenants-item bg-off-white theme-border radius-10 mb-25 h-100">
@@ -198,28 +214,56 @@
                                             @endif
                                         </div>
 
-                                        @if ($activeTab === 'bookings' && !$record->has_assignment && $record->tenant_id && !in_array($record->status, ['completed', 'cancelled'], true))
+                                        @if ($canAssignBooking)
                                             <form
                                                 action="{{ route('owner.website-leads.booking.assign-unit', $record->id) }}"
                                                 method="POST"
                                                 class="mt-20"
+                                                data-booking-assignment-form
+                                                data-selected-property-id="{{ $record->property_id }}"
+                                                data-selected-unit-id="{{ $record->property_unit_id }}"
                                             >
                                                 @csrf
                                                 <label class="font-13 color-heading mb-2 d-block">{{ __('Assign tenant to unit') }}</label>
-                                                @if ($bookingUnits->isEmpty())
-                                                    <p class="font-13 color-heading mb-0">{{ __('No units are available under this property yet.') }}</p>
+                                                @if (empty($record->property_id))
+                                                    <p class="font-13 color-heading mb-0">{{ __('This booking is missing a property reference and cannot be assigned from this page yet.') }}</p>
                                                 @else
-                                                    <div class="d-flex gap-2">
-                                                        <select name="unit_id" class="form-select">
-                                                            <option value="">{{ __('Select Unit') }}</option>
-                                                            @foreach ($bookingUnits as $unit)
-                                                                <option value="{{ $unit->id }}">{{ $unit->unit_name }}</option>
-                                                            @endforeach
-                                                        </select>
-                                                        <button type="submit" class="theme-btn w-auto">{{ __('Assign') }}</button>
+                                                    <div class="row g-2">
+                                                        <div class="col-12">
+                                                            <select
+                                                                name="property_id"
+                                                                class="form-select"
+                                                                data-role="property-select"
+                                                            >
+                                                                <option value="">{{ __('Select Property') }}</option>
+                                                                @foreach ($properties as $property)
+                                                                    <option value="{{ $property->id }}" @selected((int) $record->property_id === (int) $property->id)>{{ $property->name }}</option>
+                                                                @endforeach
+                                                            </select>
+                                                        </div>
+                                                        <div class="col-12">
+                                                            <select
+                                                                name="unit_id"
+                                                                class="form-select"
+                                                                data-role="unit-select"
+                                                            >
+                                                                <option value="">{{ __('Select Unit') }}</option>
+                                                                @foreach ($bookingUnits as $unit)
+                                                                    <option value="{{ $unit->id }}" @selected((int) $record->property_unit_id === (int) $unit->id)>{{ $unit->unit_name }}</option>
+                                                                @endforeach
+                                                            </select>
+                                                        </div>
+                                                        <div class="col-12">
+                                                            <p class="font-13 color-heading mb-0 d-none" data-role="no-units-message">
+                                                                {{ __('No units are available under the selected property yet.') }}
+                                                            </p>
+                                                        </div>
+                                                        <div class="col-12 d-flex justify-content-end">
+                                                            <button type="submit" class="theme-btn w-auto" data-role="assign-submit">{{ __('Assign') }}</button>
+                                                        </div>
                                                     </div>
                                                     <p class="font-13 color-heading mt-2 mb-0">
-                                                        {{ __('This uses the same tenant assignment flow and sends the normal assignment email.') }}
+                                                        {{ __('Pick the property first, then choose the unit. This uses the same tenant assignment flow and sends the normal assignment email.') }}
                                                     </p>
                                                 @endif
                                             </form>
@@ -269,3 +313,61 @@
         </div>
     </div>
 @endsection
+
+@push('script')
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const unitsByPropertyId = @json($unitsJson);
+
+            document.querySelectorAll('[data-booking-assignment-form]').forEach(function (form) {
+                const propertySelect = form.querySelector('[data-role="property-select"]');
+                const unitSelect = form.querySelector('[data-role="unit-select"]');
+                const noUnitsMessage = form.querySelector('[data-role="no-units-message"]');
+                const submitButton = form.querySelector('[data-role="assign-submit"]');
+                const selectedUnitId = String(form.dataset.selectedUnitId || '');
+
+                if (!propertySelect || !unitSelect || !submitButton) {
+                    return;
+                }
+
+                const syncUnits = function () {
+                    const propertyId = String(propertySelect.value || '');
+                    const units = unitsByPropertyId[propertyId] || [];
+                    const preservedUnitId = units.some(function (unit) {
+                        return String(unit.id) === String(unitSelect.value || selectedUnitId);
+                    })
+                        ? String(unitSelect.value || selectedUnitId)
+                        : '';
+
+                    unitSelect.innerHTML = '';
+
+                    const placeholder = document.createElement('option');
+                    placeholder.value = '';
+                    placeholder.textContent = @json(__('Select Unit'));
+                    unitSelect.appendChild(placeholder);
+
+                    units.forEach(function (unit) {
+                        const option = document.createElement('option');
+                        option.value = String(unit.id);
+                        option.textContent = unit.unit_name;
+                        if (String(unit.id) === preservedUnitId) {
+                            option.selected = true;
+                        }
+                        unitSelect.appendChild(option);
+                    });
+
+                    const hasUnits = units.length > 0;
+                    unitSelect.disabled = !propertyId || !hasUnits;
+                    submitButton.disabled = !propertyId || !hasUnits;
+
+                    if (noUnitsMessage) {
+                        noUnitsMessage.classList.toggle('d-none', hasUnits || !propertyId);
+                    }
+                };
+
+                propertySelect.addEventListener('change', syncUnits);
+                syncUnits();
+            });
+        });
+    </script>
+@endpush

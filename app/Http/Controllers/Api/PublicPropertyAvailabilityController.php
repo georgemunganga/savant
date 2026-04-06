@@ -70,11 +70,14 @@ class PublicPropertyAvailabilityController extends Controller
     public function confirm(int $propertyId, PublicPropertyBookingConfirmRequest $request)
     {
         try {
-            $booking = $this->availabilityService->confirmBooking($propertyId, $request->validated());
+            $result = $this->availabilityService->confirmBooking($propertyId, $request->validated());
 
-            return $this->success([
-                'booking' => $booking,
-            ], 'Booking confirmed successfully');
+            return $this->success(
+                $result,
+                !empty($result['requires_confirmation'])
+                    ? 'Existing booking confirmation required'
+                    : 'Booking confirmed successfully'
+            );
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'status' => false,

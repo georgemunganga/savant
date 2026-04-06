@@ -84,21 +84,33 @@ class PublicPropertyAvailabilityService
             }
 
             [$user, $tenant, $accountCreated] = $this->createOrReuseTenantAccount($property, $payload);
+            $bookingRequirement = $this->resolveConcurrentBookingRequirement($tenant, $user);
+
+            if ($bookingRequirement['requires_confirmation'] && empty($payload['confirm_existing_booking'])) {
+                DB::rollBack();
+
+                return $bookingRequirement;
+            }
+
             $setupEmailSent = $accountCreated || is_null($user->email_verified_at);
             if ($setupEmailSent) {
                 $this->tenantAccessService->sendAccountSetupEmail($user, $property->owner_user_id);
             }
 
-            $assignmentChanged = $this->applyBookingAssignment(
-                $tenant,
-                $property,
-                $option,
-                $payload['stay_mode'],
-                $startDate,
-                $endDate
-            );
+            $shouldAutoAssign = !$bookingRequirement['requires_confirmation'];
+            $assignmentChanged = false;
+            if ($shouldAutoAssign) {
+                $assignmentChanged = $this->applyBookingAssignment(
+                    $tenant,
+                    $property,
+                    $option,
+                    $payload['stay_mode'],
+                    $startDate,
+                    $endDate
+                );
+            }
 
-            if ($assignmentChanged && !is_null($tenant->property_id) && !is_null($tenant->unit_id)) {
+            if ($shouldAutoAssign && $assignmentChanged && !is_null($tenant->property_id) && !is_null($tenant->unit_id)) {
                 $assignedProperty = Property::query()->find($tenant->property_id);
                 $assignedUnit = PropertyUnit::query()->find($tenant->unit_id);
                 if ($assignedProperty && $assignedUnit) {
@@ -115,7 +127,7 @@ class PublicPropertyAvailabilityService
                 'owner_user_id' => $property->owner_user_id,
                 'property_id' => $property->id,
                 'option_id' => $option->id,
-                'property_unit_id' => $tenant->unit_id ?: $option->property_unit_id,
+                'property_unit_id' => $shouldAutoAssign ? ($tenant->unit_id ?: $option->property_unit_id) : null,
                 'tenant_id' => $tenant->id,
                 'user_id' => $user->id,
                 'stay_mode' => $payload['stay_mode'],
@@ -130,28 +142,31 @@ class PublicPropertyAvailabilityService
                 'source' => 'website',
                 'account_created' => $accountCreated,
                 'setup_email_sent' => $setupEmailSent,
-                'has_assignment' => !is_null($tenant->property_id) && !is_null($tenant->unit_id),
-                'assignment_created' => $assignmentChanged,
+                'has_assignment' => $shouldAutoAssign && !is_null($tenant->property_id) && !is_null($tenant->unit_id),
+                'assignment_created' => $shouldAutoAssign ? $assignmentChanged : false,
                 'confirmed_at' => now(),
             ]);
 
             DB::commit();
 
             return [
-                'id' => $bookingRecord->id,
-                'property_id' => $property->id,
-                'option_id' => $option->id,
-                'tenant_id' => $tenant->id,
-                'email' => $user->email,
-                'stay_mode' => $payload['stay_mode'],
-                'start_date' => $startDate,
-                'end_date' => $endDate,
-                'guests' => (int) $payload['guests'],
-                'payment_plan' => $payload['payment_plan'],
-                'account_created' => $accountCreated,
-                'setup_email_sent' => $setupEmailSent,
-                'has_assignment' => !is_null($tenant->property_id) && !is_null($tenant->unit_id),
-                'assignment_created' => $assignmentChanged,
+                'requires_confirmation' => false,
+                'booking' => [
+                    'id' => $bookingRecord->id,
+                    'property_id' => $property->id,
+                    'option_id' => $option->id,
+                    'tenant_id' => $tenant->id,
+                    'email' => $user->email,
+                    'stay_mode' => $payload['stay_mode'],
+                    'start_date' => $startDate,
+                    'end_date' => $endDate,
+                    'guests' => (int) $payload['guests'],
+                    'payment_plan' => $payload['payment_plan'],
+                    'account_created' => $accountCreated,
+                    'setup_email_sent' => $setupEmailSent,
+                    'has_assignment' => $shouldAutoAssign && !is_null($tenant->property_id) && !is_null($tenant->unit_id),
+                    'assignment_created' => $shouldAutoAssign ? $assignmentChanged : false,
+                ],
             ];
         } catch (\Throwable $throwable) {
             DB::rollBack();
@@ -306,6 +321,101 @@ class PublicPropertyAvailabilityService
         $phone = trim((string) $value);
 
         return $phone !== '' ? $phone : null;
+    }
+
+    private function resolveConcurrentBookingRequirement(Tenant $tenant, User $user): array
+    {
+        $currentStay = $this->getCurrentOrUpcomingStaySummary($tenant);
+        $openBooking = $this->getOpenBookingSummary($tenant, $user);
+
+        if (!$currentStay && !$openBooking) {
+            return [
+                'requires_confirmation' => false,
+                'conflict_summary' => null,
+            ];
+        }
+
+        $title = $currentStay
+            ? __('This guest already has another active or upcoming stay.')
+            : __('This guest already has another pending website booking.');
+
+        return [
+            'requires_confirmation' => true,
+            'conflict_summary' => [
+                'title' => $title,
+                'message' => __('Confirm to create an additional website booking without changing the tenant\'s current assignment.'),
+                'current_stay' => $currentStay,
+                'open_booking' => $openBooking,
+            ],
+        ];
+    }
+
+    private function getCurrentOrUpcomingStaySummary(Tenant $tenant): ?array
+    {
+        if (
+            (int) $tenant->status !== TENANT_STATUS_ACTIVE ||
+            is_null($tenant->property_id) ||
+            is_null($tenant->unit_id)
+        ) {
+            return null;
+        }
+
+        if (!is_null($tenant->lease_end_date) && Carbon::parse($tenant->lease_end_date)->lt(now()->startOfDay())) {
+            return null;
+        }
+
+        $property = $tenant->relationLoaded('property')
+            ? $tenant->property
+            : Property::query()->find($tenant->property_id);
+        $unit = $tenant->relationLoaded('unit')
+            ? $tenant->unit
+            : PropertyUnit::query()->find($tenant->unit_id);
+
+        return [
+            'property_name' => $property?->name,
+            'unit_name' => $unit?->unit_name,
+            'start_date' => $this->formatDateValue($tenant->lease_start_date),
+            'end_date' => $this->formatDateValue($tenant->lease_end_date),
+            'status' => 'active',
+        ];
+    }
+
+    private function getOpenBookingSummary(Tenant $tenant, User $user): ?array
+    {
+        $booking = PublicPropertyBooking::query()
+            ->with(['property:id,name', 'unit:id,unit_name'])
+            ->where(function ($query) use ($tenant, $user) {
+                $query->where('tenant_id', $tenant->id)
+                    ->orWhere('user_id', $user->id);
+            })
+            ->whereIn('status', [
+                PublicPropertyBooking::STATUS_CONFIRMED,
+                PublicPropertyBooking::STATUS_CHECKED_IN,
+            ])
+            ->latest('confirmed_at')
+            ->latest('id')
+            ->first();
+
+        if (!$booking) {
+            return null;
+        }
+
+        return [
+            'property_name' => $booking->property?->name,
+            'unit_name' => $booking->unit?->unit_name,
+            'start_date' => $this->formatDateValue($booking->start_date),
+            'end_date' => $this->formatDateValue($booking->end_date),
+            'status' => $booking->status,
+        ];
+    }
+
+    private function formatDateValue($value): ?string
+    {
+        if (blank($value)) {
+            return null;
+        }
+
+        return Carbon::parse($value)->toDateString();
     }
 
     private function applyBookingAssignment(

@@ -185,6 +185,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
         $response
             ->assertOk()
             ->assertJsonPath('status', true)
+            ->assertJsonPath('data.requires_confirmation', false)
             ->assertJsonPath('data.booking.account_created', true)
             ->assertJsonPath('data.booking.setup_email_sent', true)
             ->assertJsonPath('data.booking.has_assignment', true)
@@ -265,6 +266,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
         ])
             ->assertOk()
             ->assertJsonPath('status', true)
+            ->assertJsonPath('data.requires_confirmation', false)
             ->assertJsonPath('data.booking.account_created', false)
             ->assertJsonPath('data.booking.setup_email_sent', false)
             ->assertJsonPath('data.booking.has_assignment', false)
@@ -305,6 +307,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
         ])
             ->assertOk()
             ->assertJsonPath('status', true)
+            ->assertJsonPath('data.requires_confirmation', false)
             ->assertJsonPath('data.booking.account_created', true);
 
         $this->assertDatabaseHas('users', [
@@ -368,6 +371,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
         ])
             ->assertOk()
             ->assertJsonPath('status', true)
+            ->assertJsonPath('data.requires_confirmation', false)
             ->assertJsonPath('data.booking.account_created', false)
             ->assertJsonPath('data.booking.tenant_id', $tenant->id);
 
@@ -397,6 +401,167 @@ class PublicPropertyAvailabilityApiTest extends TestCase
         $response
             ->assertStatus(404)
             ->assertJsonPath('status', false);
+    }
+
+    public function test_booking_confirm_requires_confirmation_when_existing_tenant_has_an_active_or_upcoming_stay(): void
+    {
+        Mail::fake();
+        $this->enableTenantPortalMail();
+
+        $owner = $this->createOwnerUser();
+        [$firstProperty, $firstUnit] = $this->createPublicPropertyWithUnit([
+            'owner_user_id' => $owner->id,
+            'slug' => 'existing-stay-property',
+        ]);
+        [$secondProperty, , $secondOption] = $this->createPublicPropertyWithUnit([
+            'owner_user_id' => $owner->id,
+            'slug' => 'new-booking-property',
+        ]);
+
+        $user = User::query()->forceCreate([
+            'first_name' => 'Repeat',
+            'last_name' => 'Tenant',
+            'email' => 'repeat-confirm@example.com',
+            'password' => Hash::make('secret123!'),
+            'status' => USER_STATUS_ACTIVE,
+            'role' => USER_ROLE_TENANT,
+            'owner_user_id' => $owner->id,
+            'email_verified_at' => now(),
+        ]);
+
+        $tenant = Tenant::query()->forceCreate([
+            'user_id' => $user->id,
+            'owner_user_id' => $owner->id,
+            'job' => 'Engineer',
+            'family_member' => 1,
+            'property_id' => $firstProperty->id,
+            'unit_id' => $firstUnit->id,
+            'lease_start_date' => '2026-05-01',
+            'lease_end_date' => '2026-06-01',
+            'rent_type' => RENT_TYPE_MONTHLY,
+            'general_rent' => 12000,
+            'security_deposit' => 0,
+            'late_fee' => 0,
+            'incident_receipt' => 0,
+            'status' => TENANT_STATUS_ACTIVE,
+        ]);
+
+        TenantUnitAssignment::query()->forceCreate([
+            'tenant_id' => $tenant->id,
+            'property_id' => $firstProperty->id,
+            'unit_id' => $firstUnit->id,
+        ]);
+
+        $this->postJson("/api/public/properties/{$secondProperty->id}/bookings/confirm", [
+            'option_id' => $secondOption->id,
+            'stay_mode' => 'months',
+            'start_date' => '2026-07-01',
+            'end_date' => '2026-08-01',
+            'guests' => 1,
+            'full_name' => 'Repeat Tenant',
+            'email' => 'repeat-confirm@example.com',
+            'phone' => '+260971111111',
+            'payment_plan' => 'later',
+        ])
+            ->assertOk()
+            ->assertJsonPath('status', true)
+            ->assertJsonPath('data.requires_confirmation', true)
+            ->assertJsonPath('data.conflict_summary.current_stay.property_name', $firstProperty->name)
+            ->assertJsonPath('data.conflict_summary.open_booking', null);
+
+        $this->assertDatabaseMissing('public_property_bookings', [
+            'tenant_id' => $tenant->id,
+            'property_id' => $secondProperty->id,
+        ]);
+
+        Mail::assertNothingSent();
+    }
+
+    public function test_confirmed_repeat_booking_creates_an_additional_booking_without_overwriting_the_current_assignment(): void
+    {
+        Mail::fake();
+        $this->enableTenantPortalMail();
+
+        $owner = $this->createOwnerUser();
+        [$firstProperty, $firstUnit] = $this->createPublicPropertyWithUnit([
+            'owner_user_id' => $owner->id,
+            'slug' => 'existing-stay-property',
+        ]);
+        [$secondProperty, , $secondOption] = $this->createPublicPropertyWithUnit([
+            'owner_user_id' => $owner->id,
+            'slug' => 'new-booking-property',
+        ]);
+
+        $user = User::query()->forceCreate([
+            'first_name' => 'Repeat',
+            'last_name' => 'Tenant',
+            'email' => 'repeat-confirmed@example.com',
+            'password' => Hash::make('secret123!'),
+            'status' => USER_STATUS_ACTIVE,
+            'role' => USER_ROLE_TENANT,
+            'owner_user_id' => $owner->id,
+            'email_verified_at' => now(),
+        ]);
+
+        $tenant = Tenant::query()->forceCreate([
+            'user_id' => $user->id,
+            'owner_user_id' => $owner->id,
+            'job' => 'Engineer',
+            'family_member' => 1,
+            'property_id' => $firstProperty->id,
+            'unit_id' => $firstUnit->id,
+            'lease_start_date' => '2026-05-01',
+            'lease_end_date' => '2026-06-01',
+            'rent_type' => RENT_TYPE_MONTHLY,
+            'general_rent' => 12000,
+            'security_deposit' => 0,
+            'late_fee' => 0,
+            'incident_receipt' => 0,
+            'status' => TENANT_STATUS_ACTIVE,
+        ]);
+
+        TenantUnitAssignment::query()->forceCreate([
+            'tenant_id' => $tenant->id,
+            'property_id' => $firstProperty->id,
+            'unit_id' => $firstUnit->id,
+        ]);
+
+        $this->postJson("/api/public/properties/{$secondProperty->id}/bookings/confirm", [
+            'option_id' => $secondOption->id,
+            'stay_mode' => 'months',
+            'start_date' => '2026-07-01',
+            'end_date' => '2026-08-01',
+            'guests' => 1,
+            'full_name' => 'Repeat Tenant',
+            'email' => 'repeat-confirmed@example.com',
+            'phone' => '+260971111111',
+            'payment_plan' => 'later',
+            'confirm_existing_booking' => true,
+        ])
+            ->assertOk()
+            ->assertJsonPath('status', true)
+            ->assertJsonPath('data.requires_confirmation', false)
+            ->assertJsonPath('data.booking.account_created', false)
+            ->assertJsonPath('data.booking.has_assignment', false)
+            ->assertJsonPath('data.booking.assignment_created', false);
+
+        $tenant->refresh();
+
+        $this->assertSame($firstProperty->id, (int) $tenant->property_id);
+        $this->assertSame($firstUnit->id, (int) $tenant->unit_id);
+        $this->assertSame('2026-05-01', (string) $tenant->lease_start_date);
+        $this->assertSame('2026-06-01', (string) $tenant->lease_end_date);
+
+        $this->assertDatabaseHas('public_property_bookings', [
+            'tenant_id' => $tenant->id,
+            'property_id' => $secondProperty->id,
+            'option_id' => $secondOption->id,
+            'property_unit_id' => null,
+            'has_assignment' => false,
+            'assignment_created' => false,
+        ]);
+
+        Mail::assertNothingSent();
     }
 
     private function createPublicPropertyWithUnit(array $overrides = []): array

@@ -126,7 +126,9 @@ class OwnerWebsiteLeadPageTest extends TestCase
             ->assertSee('Website Leads')
             ->assertSee('Booked Guest')
             ->assertSee('Live Bookings')
-            ->assertSee('Assign tenant to unit');
+            ->assertSee('Assign tenant to unit')
+            ->assertSee('Select Property')
+            ->assertSee('Select Unit');
 
         $this->get(route('owner.website-leads.index', ['tab' => 'waitlist']))
             ->assertOk()
@@ -252,6 +254,7 @@ class OwnerWebsiteLeadPageTest extends TestCase
         $this->actingAs($owner);
 
         $this->post(route('owner.website-leads.booking.assign-unit', $booking->id), [
+            'property_id' => $property->id,
             'unit_id' => $unit->id,
         ])->assertRedirect();
 
@@ -271,6 +274,173 @@ class OwnerWebsiteLeadPageTest extends TestCase
         Mail::assertSent(TenantPortalActionMail::class, 1);
     }
 
+    public function test_owner_can_change_the_booking_property_before_assigning_the_unit(): void
+    {
+        Mail::fake();
+        $this->enableTenantPortalMail();
+
+        $owner = $this->createOwnerUser();
+        [$firstProperty, $firstUnit, $firstOption] = $this->createPublicPropertyWithUnit($owner->id, [
+            'name' => 'Original Website Property',
+            'slug' => 'original-website-property',
+        ]);
+        [$secondProperty, $secondUnit] = $this->createPublicPropertyWithUnit($owner->id, [
+            'name' => 'Reassigned Property',
+            'slug' => 'reassigned-property',
+        ]);
+
+        $tenantUser = User::query()->forceCreate([
+            'first_name' => 'Pending',
+            'last_name' => 'Guest',
+            'email' => 'reassign@example.com',
+            'password' => Hash::make('secret123'),
+            'status' => USER_STATUS_ACTIVE,
+            'role' => USER_ROLE_TENANT,
+            'owner_user_id' => $owner->id,
+            'email_verified_at' => now(),
+        ]);
+        $tenant = Tenant::query()->forceCreate([
+            'user_id' => $tenantUser->id,
+            'owner_user_id' => $owner->id,
+            'job' => 'Engineer',
+            'family_member' => 1,
+            'property_id' => $firstProperty->id,
+            'unit_id' => null,
+            'lease_start_date' => '2026-05-01',
+            'lease_end_date' => '2026-06-01',
+            'rent_type' => RENT_TYPE_MONTHLY,
+            'general_rent' => 12000,
+            'security_deposit' => 0,
+            'late_fee' => 0,
+            'incident_receipt' => 0,
+            'status' => TENANT_STATUS_ACTIVE,
+        ]);
+
+        $booking = PublicPropertyBooking::query()->create([
+            'owner_user_id' => $owner->id,
+            'property_id' => $firstProperty->id,
+            'option_id' => $firstOption->id,
+            'property_unit_id' => null,
+            'tenant_id' => $tenant->id,
+            'user_id' => $tenantUser->id,
+            'stay_mode' => 'months',
+            'start_date' => '2026-05-01',
+            'end_date' => '2026-06-01',
+            'guests' => 1,
+            'full_name' => 'Pending Guest',
+            'email' => 'reassign@example.com',
+            'phone' => '+260973333333',
+            'payment_plan' => 'later',
+            'status' => PublicPropertyBooking::STATUS_CONFIRMED,
+            'source' => 'website',
+            'has_assignment' => false,
+            'assignment_created' => false,
+            'confirmed_at' => now(),
+        ]);
+
+        $this->actingAs($owner);
+
+        $this->post(route('owner.website-leads.booking.assign-unit', $booking->id), [
+            'property_id' => $secondProperty->id,
+            'unit_id' => $secondUnit->id,
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('tenants', [
+            'id' => $tenant->id,
+            'property_id' => $secondProperty->id,
+            'unit_id' => $secondUnit->id,
+        ]);
+
+        $this->assertDatabaseHas('public_property_bookings', [
+            'id' => $booking->id,
+            'property_id' => $secondProperty->id,
+            'property_unit_id' => $secondUnit->id,
+            'option_id' => null,
+            'has_assignment' => true,
+            'assignment_created' => true,
+        ]);
+
+        $this->get(route('owner.website-leads.index'))
+            ->assertSee('Manual assignment');
+
+        Mail::assertSent(TenantPortalActionMail::class, 1);
+    }
+
+    public function test_owner_assignment_rejects_units_from_another_property(): void
+    {
+        $owner = $this->createOwnerUser();
+        [$firstProperty, , $firstOption] = $this->createPublicPropertyWithUnit($owner->id, [
+            'name' => 'Original Website Property',
+            'slug' => 'original-website-property',
+        ]);
+        [$secondProperty, $secondUnit] = $this->createPublicPropertyWithUnit($owner->id, [
+            'name' => 'Other Property',
+            'slug' => 'other-property',
+        ]);
+
+        $tenantUser = User::query()->forceCreate([
+            'first_name' => 'Pending',
+            'last_name' => 'Guest',
+            'email' => 'invalid-unit@example.com',
+            'password' => Hash::make('secret123'),
+            'status' => USER_STATUS_ACTIVE,
+            'role' => USER_ROLE_TENANT,
+            'owner_user_id' => $owner->id,
+        ]);
+        $tenant = Tenant::query()->forceCreate([
+            'user_id' => $tenantUser->id,
+            'owner_user_id' => $owner->id,
+            'job' => 'Engineer',
+            'family_member' => 1,
+            'property_id' => $firstProperty->id,
+            'unit_id' => null,
+            'rent_type' => RENT_TYPE_MONTHLY,
+            'general_rent' => 12000,
+            'security_deposit' => 0,
+            'late_fee' => 0,
+            'incident_receipt' => 0,
+            'status' => TENANT_STATUS_ACTIVE,
+        ]);
+
+        $booking = PublicPropertyBooking::query()->create([
+            'owner_user_id' => $owner->id,
+            'property_id' => $firstProperty->id,
+            'option_id' => $firstOption->id,
+            'tenant_id' => $tenant->id,
+            'user_id' => $tenantUser->id,
+            'stay_mode' => 'months',
+            'start_date' => '2026-05-01',
+            'end_date' => '2026-06-01',
+            'guests' => 1,
+            'full_name' => 'Pending Guest',
+            'email' => 'invalid-unit@example.com',
+            'phone' => '+260973333333',
+            'payment_plan' => 'later',
+            'status' => PublicPropertyBooking::STATUS_CONFIRMED,
+            'source' => 'website',
+            'has_assignment' => false,
+            'assignment_created' => false,
+            'confirmed_at' => now(),
+        ]);
+
+        $this->actingAs($owner);
+
+        $this->post(route('owner.website-leads.booking.assign-unit', $booking->id), [
+            'property_id' => $firstProperty->id,
+            'unit_id' => $secondUnit->id,
+        ])
+            ->assertRedirect()
+            ->assertSessionHas('error', 'Invalid unit selected for the chosen property.');
+
+        $this->assertDatabaseHas('public_property_bookings', [
+            'id' => $booking->id,
+            'property_id' => $firstProperty->id,
+            'property_unit_id' => null,
+            'option_id' => $firstOption->id,
+            'has_assignment' => false,
+        ]);
+    }
+
     private function createOwnerUser(): User
     {
         return User::query()->forceCreate([
@@ -283,17 +453,17 @@ class OwnerWebsiteLeadPageTest extends TestCase
         ]);
     }
 
-    private function createPublicPropertyWithUnit(int $ownerUserId): array
+    private function createPublicPropertyWithUnit(int $ownerUserId, array $overrides = []): array
     {
         $property = Property::query()->forceCreate([
             'owner_user_id' => $ownerUserId,
             'property_type' => PROPERTY_TYPE_OWN,
-            'name' => 'Website Lead Property',
+            'name' => $overrides['name'] ?? 'Website Lead Property',
             'number_of_unit' => 1,
             'description' => 'Public property description',
             'status' => RENT_CHARGE_ACTIVE_CLASS,
             'is_public' => true,
-            'public_slug' => 'website-lead-property',
+            'public_slug' => $overrides['slug'] ?? ('website-lead-property-' . random_int(1000, 9999)),
             'public_category' => 'apartment',
             'public_summary' => 'Public summary',
             'public_home_sections' => 'featured',
@@ -307,7 +477,7 @@ class OwnerWebsiteLeadPageTest extends TestCase
 
         $unit = PropertyUnit::query()->forceCreate([
             'property_id' => $property->id,
-            'unit_name' => 'Unit A',
+            'unit_name' => $overrides['unit_name'] ?? 'Unit A',
             'bedroom' => 1,
             'bath' => 1,
             'kitchen' => 1,

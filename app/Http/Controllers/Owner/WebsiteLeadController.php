@@ -39,6 +39,14 @@ class WebsiteLeadController extends Controller
             ->where('owner_user_id', $ownerUserId)
             ->orderBy('name')
             ->get(['id', 'name']);
+        $ownerPropertyIds = $data['properties']->pluck('id');
+        $data['unitsByPropertyId'] = PropertyUnit::query()
+            ->whereIn('property_id', $ownerPropertyIds)
+            ->whereNull('deleted_at')
+            ->orderBy('property_id')
+            ->orderBy('unit_name')
+            ->get(['id', 'property_id', 'unit_name', 'max_occupancy'])
+            ->groupBy('property_id');
 
         $data['bookingCount'] = PublicPropertyBooking::query()
             ->where('owner_user_id', $ownerUserId)
@@ -79,13 +87,6 @@ class WebsiteLeadController extends Controller
             $this->applyCommonFilters($query, $data['filters']);
 
             $data['records'] = $query->paginate(12)->withQueryString();
-            $propertyIds = $data['records']->getCollection()->pluck('property_id')->filter()->unique()->values();
-            $data['unitsByPropertyId'] = PropertyUnit::query()
-                ->whereIn('property_id', $propertyIds)
-                ->whereNull('deleted_at')
-                ->orderBy('unit_name')
-                ->get(['id', 'property_id', 'unit_name', 'max_occupancy'])
-                ->groupBy('property_id');
         }
 
         return view('owner.website-leads.index', $data);
@@ -110,6 +111,7 @@ class WebsiteLeadController extends Controller
     public function assignBookingUnit(Request $request, int $id): RedirectResponse
     {
         $validated = $request->validate([
+            'property_id' => ['required', 'integer'],
             'unit_id' => ['required', 'integer'],
         ]);
 
@@ -133,14 +135,27 @@ class WebsiteLeadController extends Controller
             return back()->with('error', __('This booking already has an assigned unit.'));
         }
 
-        $unit = PropertyUnit::query()
-            ->where('property_id', $booking->property_id)
-            ->whereNull('deleted_at')
-            ->findOrFail((int) $validated['unit_id']);
+        $property = Property::query()
+            ->where('owner_user_id', getOwnerUserId())
+            ->find((int) $validated['property_id']);
 
+        if (!$property) {
+            return back()->with('error', __('Invalid property selected.'));
+        }
+
+        $unit = PropertyUnit::query()
+            ->where('property_id', $property->id)
+            ->whereNull('deleted_at')
+            ->find((int) $validated['unit_id']);
+
+        if (!$unit) {
+            return back()->with('error', __('Invalid unit selected for the chosen property.'));
+        }
+
+        $originalPropertyId = (int) $booking->property_id;
         $assignmentChanged = $this->tenantService->assignTenantToPrimaryUnit(
             $booking->tenant,
-            (int) $booking->property_id,
+            (int) $property->id,
             (int) $unit->id,
             [
                 'lease_start_date' => optional($booking->start_date)->toDateString(),
@@ -148,9 +163,13 @@ class WebsiteLeadController extends Controller
             ]
         );
 
+        $booking->property_id = $property->id;
+        if ((int) $property->id !== $originalPropertyId) {
+            $booking->option_id = null;
+        }
         $booking->property_unit_id = $unit->id;
         $booking->has_assignment = true;
-        $booking->assignment_created = $booking->assignment_created || $assignmentChanged;
+        $booking->assignment_created = true;
         $booking->save();
 
         return back()->with('success', __('Tenant assigned to unit successfully.'));
