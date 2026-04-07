@@ -172,6 +172,37 @@ class PublicPropertyCatalogApiTest extends TestCase
             ->assertJsonPath('data.property.slug', 'slug-property');
     }
 
+    public function test_boarding_listings_prefer_per_bed_space_summary_when_a_shared_space_option_exists(): void
+    {
+        $property = $this->createPublicProperty([
+            'name' => 'Boarding Property',
+            'slug' => 'boarding-property',
+            'summary' => 'Boarding property summary',
+            'category' => 'boarding',
+            'monthly_rate' => 14000,
+            'max_guests' => 4,
+        ]);
+
+        PublicPropertyOption::query()->forceCreate([
+            'property_id' => $property->id,
+            'property_unit_id' => null,
+            'rental_kind' => 'shared_space',
+            'monthly_rate' => 3000,
+            'nightly_rate' => 200,
+            'max_guests' => 6,
+            'status' => ACTIVE,
+            'sort_order' => 2,
+            'is_default' => false,
+        ]);
+
+        $response = $this->getJson('/api/public/properties?stayMode=months');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('data.properties.0.starting_option_label', 'Per bed space')
+            ->assertJsonPath('data.properties.0.occupancy_label', 'Per bed space');
+    }
+
     private function createPublicProperty(array $overrides = []): Property
     {
         $property = Property::query()->forceCreate([

@@ -119,6 +119,9 @@ class PropertyService
             'vacant_unit' => 0,
             'on_hold_unit' => 0,
             'off_market_unit' => 0,
+            'available_bedspace' => 0,
+            'occupied_bedspace' => 0,
+            'total_bedspace_capacity' => 0,
             'total_tenant' => 0,
         ]);
         $financialSummary = $this->getPropertyFinancialSummary((int) $id);
@@ -892,6 +895,9 @@ class PropertyService
                 'vacant_unit' => 0,
                 'on_hold_unit' => 0,
                 'off_market_unit' => 0,
+                'available_bedspace' => 0,
+                'occupied_bedspace' => 0,
+                'total_bedspace_capacity' => 0,
                 'total_tenant' => 0,
             ]);
 

@@ -129,11 +129,25 @@
                                                     <th class="text-end">{{ count($units) }}</th>
                                                 </tr>
                                                 <tr>
-                                                    <th>{{ __('Available for Lease') }}</th>
+                                                    <th>{{ __('Available Units Now') }}</th>
                                                     <th class="text-end">{{ $property->available_unit }}</th>
                                                 </tr>
+                                                @if ($property->public_category === 'boarding')
+                                                    <tr>
+                                                        <th>{{ __('Available Bedspaces Now') }}</th>
+                                                        <th class="text-end">{{ $property->available_bedspace }}</th>
+                                                    </tr>
+                                                    <tr>
+                                                        <th>{{ __('Occupied Bedspaces Now') }}</th>
+                                                        <th class="text-end">{{ $property->occupied_bedspace }}</th>
+                                                    </tr>
+                                                    <tr>
+                                                        <th>{{ __('Total Bedspace Capacity') }}</th>
+                                                        <th class="text-end">{{ $property->total_bedspace_capacity }}</th>
+                                                    </tr>
+                                                @endif
                                                 <tr>
-                                                    <th>{{ __('Occupied Units') }}</th>
+                                                    <th>{{ __('Occupied Units Now') }}</th>
                                                     <th class="text-end">{{ $property->occupied_unit }}</th>
                                                 </tr>
                                                 <tr>

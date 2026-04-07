@@ -129,6 +129,105 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             ->assertJsonPath('data.availability_status', 'on_hold');
     }
 
+    public function test_property_level_shared_space_uses_aggregate_bedspace_capacity_instead_of_treating_the_property_as_full(): void
+    {
+        [$property, $firstUnit, $option] = $this->createPublicPropertyWithUnit([
+            'category' => 'boarding',
+            'rental_kind' => 'shared_space',
+            'property_unit_id' => null,
+            'max_occupancy' => 4,
+            'max_guests' => 6,
+        ]);
+
+        PropertyUnit::query()->forceCreate([
+            'property_id' => $property->id,
+            'unit_name' => 'Unit B',
+            'bedroom' => 1,
+            'bath' => 1,
+            'kitchen' => 1,
+            'max_occupancy' => 2,
+            'general_rent' => 9000,
+            'description' => 'Second unit',
+            'square_feet' => '38',
+            'amenities' => 'WiFi,Parking',
+            'parking' => 'yes',
+        ]);
+
+        $this->assignActiveTenant($property, $firstUnit, [
+            'lease_start_date' => '2026-04-01',
+            'lease_end_date' => '2026-04-30',
+        ]);
+        $this->assignActiveTenant($property, $firstUnit, [
+            'lease_start_date' => '2026-04-05',
+            'lease_end_date' => '2026-04-20',
+        ]);
+
+        $this->postJson("/api/public/properties/{$property->id}/availability-check", [
+            'option_id' => $option->id,
+            'stay_mode' => 'months',
+            'start_date' => '2026-04-10',
+            'end_date' => '2026-05-10',
+            'guests' => 1,
+            'full_name' => 'Jane Doe',
+            'email' => 'jane@example.com',
+            'phone' => '+260971111111',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.available', true)
+            ->assertJsonPath('data.inventory_mode', 'bedspace')
+            ->assertJsonPath('data.capacity_total', 6)
+            ->assertJsonPath('data.capacity_available', 4)
+            ->assertJsonPath('data.eligible_units_total', 2)
+            ->assertJsonPath('data.availability_status', 'available');
+    }
+
+    public function test_property_level_shared_space_excludes_on_hold_units_from_bedspace_capacity_instead_of_blocking_the_entire_property(): void
+    {
+        [$property, $firstUnit, $option] = $this->createPublicPropertyWithUnit([
+            'category' => 'boarding',
+            'rental_kind' => 'shared_space',
+            'property_unit_id' => null,
+            'max_occupancy' => 4,
+            'max_guests' => 6,
+        ]);
+
+        $firstUnit->forceFill([
+            'manual_availability_status' => \App\Models\PropertyUnit::MANUAL_AVAILABILITY_ON_HOLD,
+        ])->save();
+
+        PropertyUnit::query()->forceCreate([
+            'property_id' => $property->id,
+            'unit_name' => 'Unit B',
+            'bedroom' => 1,
+            'bath' => 1,
+            'kitchen' => 1,
+            'max_occupancy' => 2,
+            'general_rent' => 9000,
+            'description' => 'Available unit',
+            'square_feet' => '38',
+            'amenities' => 'WiFi,Parking',
+            'parking' => 'yes',
+        ]);
+
+        $this->postJson("/api/public/properties/{$property->id}/availability-check", [
+            'option_id' => $option->id,
+            'stay_mode' => 'months',
+            'start_date' => '2026-04-10',
+            'end_date' => '2026-05-10',
+            'guests' => 2,
+            'full_name' => 'Jane Doe',
+            'email' => 'jane@example.com',
+            'phone' => '+260971111111',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.available', true)
+            ->assertJsonPath('data.inventory_mode', 'bedspace')
+            ->assertJsonPath('data.capacity_total', 2)
+            ->assertJsonPath('data.capacity_available', 2)
+            ->assertJsonPath('data.eligible_units_total', 1)
+            ->assertJsonPath('data.availability_status', 'available');
+    }
+
     public function test_waitlist_persists_a_record_for_the_selected_option(): void
     {
         [$property, $unit, $option] = $this->createPublicPropertyWithUnit([
@@ -757,7 +856,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'status' => RENT_CHARGE_ACTIVE_CLASS,
             'is_public' => true,
             'public_slug' => $overrides['slug'] ?? 'test-public-property',
-            'public_category' => 'apartment',
+            'public_category' => $overrides['category'] ?? 'apartment',
             'public_summary' => 'Public summary',
             'public_home_sections' => 'featured,popular',
             'public_sort_order' => 1,
@@ -790,7 +889,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'rental_kind' => $overrides['rental_kind'] ?? 'whole_unit',
             'monthly_rate' => 12000,
             'nightly_rate' => 700,
-            'max_guests' => 2,
+            'max_guests' => $overrides['max_guests'] ?? 2,
             'status' => ACTIVE,
             'sort_order' => 1,
             'is_default' => true,

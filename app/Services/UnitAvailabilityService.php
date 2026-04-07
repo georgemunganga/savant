@@ -117,6 +117,9 @@ class UnitAvailabilityService
                     'vacant_unit' => $units->where('occupancy_state', 'vacant')->count(),
                     'on_hold_unit' => $units->where('manual_availability_status', PropertyUnit::MANUAL_AVAILABILITY_ON_HOLD)->count(),
                     'off_market_unit' => $units->where('manual_availability_status', PropertyUnit::MANUAL_AVAILABILITY_OFF_MARKET)->count(),
+                    'available_bedspace' => $units->sum(fn ($unit) => (int) ($unit->available_slots ?? 0)),
+                    'occupied_bedspace' => $units->sum(fn ($unit) => (int) ($unit->active_tenant_count ?? 0)),
+                    'total_bedspace_capacity' => $units->sum(fn ($unit) => (int) ($unit->max_occupancy ?? 0)),
                     'total_tenant' => $units->sum(fn ($unit) => (int) ($unit->active_tenant_count ?? 0)),
                 ],
             ];

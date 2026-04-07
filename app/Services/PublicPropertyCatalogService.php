@@ -175,22 +175,7 @@ class PublicPropertyCatalogService
             return null;
         }
 
-        $selectedOption = $matchingOptions
-            ->sort(function (PublicPropertyOption $left, PublicPropertyOption $right) use ($filters) {
-                $leftPrice = $this->getComparableRate($left, $filters['stayMode']);
-                $rightPrice = $this->getComparableRate($right, $filters['stayMode']);
-
-                if ($leftPrice === $rightPrice) {
-                    if ($left->sort_order === $right->sort_order) {
-                        return $left->id <=> $right->id;
-                    }
-
-                    return $left->sort_order <=> $right->sort_order;
-                }
-
-                return $leftPrice <=> $rightPrice;
-            })
-            ->first();
+        $selectedOption = $this->selectSummaryOption($property, $matchingOptions, $filters['stayMode']);
 
         if (!$selectedOption) {
             return null;
@@ -524,7 +509,13 @@ class PublicPropertyCatalogService
             return $option->propertyUnit->unit_name;
         }
 
-        return $this->getRentalKindLabel($option->rental_kind);
+        return match ($option->rental_kind) {
+            'whole_property' => 'Entire property',
+            'whole_unit' => 'Whole unit',
+            'private_room' => 'Private room',
+            'shared_space' => 'Per bed space',
+            default => $this->getRentalKindLabel($option->rental_kind),
+        };
     }
 
     private function getOptionSummary(Property $property, PublicPropertyOption $option): string
@@ -540,9 +531,9 @@ class PublicPropertyCatalogService
     {
         return match ($option->rental_kind) {
             'whole_property' => 'Entire property',
-            'whole_unit' => 'Private unit',
-            'private_room' => 'Private room in a shared property',
-            'shared_space' => 'Shared space',
+            'whole_unit' => 'Whole unit',
+            'private_room' => 'Private room',
+            'shared_space' => 'Per bed space',
             default => 'Managed by Savant',
         };
     }
@@ -550,12 +541,52 @@ class PublicPropertyCatalogService
     private function getRentalKindLabel(string $rentalKind): string
     {
         return match ($rentalKind) {
-            'whole_property' => 'Whole property',
+            'whole_property' => 'Entire property',
             'whole_unit' => 'Whole unit',
             'private_room' => 'Private room',
-            'shared_space' => 'Shared space',
+            'shared_space' => 'Per bed space',
             default => 'Public option',
         };
+    }
+
+    private function selectSummaryOption(Property $property, Collection $matchingOptions, string $stayMode): ?PublicPropertyOption
+    {
+        $sortedOptions = $matchingOptions
+            ->sort(function (PublicPropertyOption $left, PublicPropertyOption $right) use ($stayMode) {
+                $leftPrice = $this->getComparableRate($left, $stayMode);
+                $rightPrice = $this->getComparableRate($right, $stayMode);
+
+                if ($leftPrice === $rightPrice) {
+                    if ($left->sort_order === $right->sort_order) {
+                        return $left->id <=> $right->id;
+                    }
+
+                    return $left->sort_order <=> $right->sort_order;
+                }
+
+                return $leftPrice <=> $rightPrice;
+            })
+            ->values();
+
+        if ($property->public_category === 'boarding') {
+            $sharedSpaceOption = $sortedOptions->first(function (PublicPropertyOption $option) {
+                return $option->rental_kind === 'shared_space' && is_null($option->property_unit_id);
+            });
+
+            if ($sharedSpaceOption) {
+                return $sharedSpaceOption;
+            }
+
+            $sharedSpaceOption = $sortedOptions->first(function (PublicPropertyOption $option) {
+                return $option->rental_kind === 'shared_space';
+            });
+
+            if ($sharedSpaceOption) {
+                return $sharedSpaceOption;
+            }
+        }
+
+        return $sortedOptions->first();
     }
 
     private function parseHomeSections(?string $sections): array

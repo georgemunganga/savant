@@ -4,6 +4,16 @@
     @php
         $wholePublicOption = @$property->wholePublicOption;
         $publicSections = array_filter(explode(',', (string) @$property->public_home_sections));
+        $wholePropertyRentalKinds = [
+            'whole_property' => 'Entire Property',
+            'shared_space' => 'Per Bed Space',
+        ];
+
+        if (in_array(@$wholePublicOption->rental_kind, ['whole_unit', 'private_room'], true)) {
+            $wholePropertyRentalKinds[@$wholePublicOption->rental_kind] = @$wholePublicOption->rental_kind === 'whole_unit'
+                ? 'Whole Unit (Legacy)'
+                : 'Private Room (Legacy)';
+        }
     @endphp
     <input type="text" name="property_id" class="d-none" value="{{ @$property->id }}">
     <input type="text" name="property_type" class="d-none" id="property_type"
@@ -197,7 +207,7 @@
                         <div class="col-md-3 mb-25">
                             <label class="label-text-title color-heading font-medium mb-2">Rental Kind <span class="text-danger">*</span></label>
                             <select class="form-control js-whole-property-option-field" name="whole_property_option[rental_kind]">
-                                @foreach (['whole_property' => 'Whole Property', 'whole_unit' => 'Whole Unit', 'private_room' => 'Private Room', 'shared_space' => 'Shared Space'] as $value => $label)
+                                @foreach ($wholePropertyRentalKinds as $value => $label)
                                     <option value="{{ $value }}"
                                         {{ @$wholePublicOption->rental_kind === $value ? 'selected' : ($value === 'whole_property' ? 'selected' : '') }}>
                                         {{ $label }}
@@ -225,7 +235,7 @@
                         </div>
                         <div class="col-md-5 mb-25 d-flex align-items-end">
                             <small class="text-muted">
-                                Turn this on first if you want these values to be saved and shown on the website.
+                                Use <strong>Per Bed Space</strong> for boarding capacity across the property. Use the unit-level options below for whole-unit or private-room website choices.
                             </small>
                         </div>
                     </div>

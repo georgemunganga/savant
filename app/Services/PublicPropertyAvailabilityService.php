@@ -40,7 +40,8 @@ class PublicPropertyAvailabilityService
             $option,
             $startDate,
             $endDate,
-            $payload['stay_mode']
+            $payload['stay_mode'],
+            max((int) $payload['guests'], 1)
         );
     }
 
@@ -77,7 +78,8 @@ class PublicPropertyAvailabilityService
                 $option,
                 $startDate,
                 $endDate,
-                $payload['stay_mode']
+                $payload['stay_mode'],
+                max((int) $payload['guests'], 1)
             );
 
             if (!$availability['available']) {
@@ -533,13 +535,32 @@ class PublicPropertyAvailabilityService
         PublicPropertyOption $option,
         string $startDate,
         string $endDate,
-        string $stayMode
+        string $stayMode,
+        int $guests
     ): array {
         if ($option->property_unit_id) {
-            return $this->calculateUnitAvailability($property, $option, $startDate, $endDate, $stayMode);
+            return $this->calculateUnitAvailability($property, $option, $startDate, $endDate, $stayMode, $guests);
         }
 
-        return $this->calculateWholePropertyAvailability($property, $option, $startDate, $endDate, $stayMode);
+        return match ($option->rental_kind) {
+            'shared_space' => $this->calculateAggregateSharedSpaceAvailability(
+                $property,
+                $option,
+                $startDate,
+                $endDate,
+                $stayMode,
+                $guests
+            ),
+            'whole_unit', 'private_room' => $this->calculateAggregateUnitInventoryAvailability(
+                $property,
+                $option,
+                $startDate,
+                $endDate,
+                $stayMode,
+                $guests
+            ),
+            default => $this->calculateWholePropertyAvailability($property, $option, $startDate, $endDate, $stayMode),
+        };
     }
 
     private function calculateUnitAvailability(
@@ -547,7 +568,8 @@ class PublicPropertyAvailabilityService
         PublicPropertyOption $option,
         string $startDate,
         string $endDate,
-        string $stayMode
+        string $stayMode,
+        int $guests
     ): array {
         $unit = PropertyUnit::query()
             ->where('property_id', $property->id)
@@ -556,7 +578,14 @@ class PublicPropertyAvailabilityService
             ->first();
 
         if (!$unit || is_null($unit->max_occupancy) || (int) $unit->max_occupancy <= 0) {
-            return $this->unknownAvailabilityPayload($property->id, $option->id, $startDate, $endDate, $stayMode);
+            return $this->unknownAvailabilityPayload(
+                $property->id,
+                $option->id,
+                $startDate,
+                $endDate,
+                $stayMode,
+                $this->resolveInventoryMode($option)
+            );
         }
         if (in_array(($unit->manual_availability_status ?? null), [
             PropertyUnit::MANUAL_AVAILABILITY_ON_HOLD,
@@ -572,7 +601,11 @@ class PublicPropertyAvailabilityService
                 0,
                 $startDate,
                 $endDate,
-                $stayMode
+                $stayMode,
+                $this->resolveInventoryMode($option),
+                (int) $unit->max_occupancy,
+                0,
+                1
             );
         }
 
@@ -592,23 +625,32 @@ class PublicPropertyAvailabilityService
                 0,
                 $startDate,
                 $endDate,
-                $stayMode
+                $stayMode,
+                'unit',
+                1,
+                $available ? 1 : 0,
+                1
             );
         }
 
         $availableSlots = max((int) $unit->max_occupancy - $occupied, 0);
+        $inventoryMode = $this->resolveInventoryMode($option);
 
         return $this->availabilityPayload(
             $property->id,
             $option->id,
-            $availableSlots > 0,
-            $availableSlots > 0 ? 'available' : 'full',
+            $availableSlots >= $guests,
+            $availableSlots >= $guests ? 'available' : 'full',
             (int) $unit->max_occupancy,
             $availableSlots,
             0,
             $startDate,
             $endDate,
-            $stayMode
+            $stayMode,
+            $inventoryMode,
+            (int) $unit->max_occupancy,
+            $availableSlots,
+            1
         );
     }
 
@@ -630,7 +672,14 @@ class PublicPropertyAvailabilityService
             ->get($unitColumns);
 
         if ($units->isEmpty()) {
-            return $this->unknownAvailabilityPayload($property->id, $option->id, $startDate, $endDate, $stayMode);
+            return $this->unknownAvailabilityPayload(
+                $property->id,
+                $option->id,
+                $startDate,
+                $endDate,
+                $stayMode,
+                'property'
+            );
         }
 
         $blockedStatus = $units
@@ -650,7 +699,11 @@ class PublicPropertyAvailabilityService
                 0,
                 $startDate,
                 $endDate,
-                $stayMode
+                $stayMode,
+                'property',
+                1,
+                0,
+                $units->count()
             );
         }
 
@@ -659,7 +712,16 @@ class PublicPropertyAvailabilityService
         );
 
         if ($unknownUnits->isNotEmpty()) {
-            return $this->unknownAvailabilityPayload($property->id, $option->id, $startDate, $endDate, $stayMode);
+            return $this->unknownAvailabilityPayload(
+                $property->id,
+                $option->id,
+                $startDate,
+                $endDate,
+                $stayMode,
+                'property',
+                $unknownUnits->count(),
+                $units->count()
+            );
         }
 
         $occupiedCounts = $this->getOccupiedUnitCounts($property->id, $startDate, $endDate);
@@ -675,7 +737,172 @@ class PublicPropertyAvailabilityService
             0,
             $startDate,
             $endDate,
-            $stayMode
+            $stayMode,
+            'property',
+            1,
+            $available ? 1 : 0,
+            $units->count()
+        );
+    }
+
+    private function calculateAggregateSharedSpaceAvailability(
+        Property $property,
+        PublicPropertyOption $option,
+        string $startDate,
+        string $endDate,
+        string $stayMode,
+        int $guests
+    ): array {
+        $units = $this->getPropertyAvailabilityUnits($property);
+
+        if ($units->isEmpty()) {
+            return $this->unknownAvailabilityPayload(
+                $property->id,
+                $option->id,
+                $startDate,
+                $endDate,
+                $stayMode,
+                'bedspace'
+            );
+        }
+
+        $eligibleUnits = $units->filter(function (PropertyUnit $unit) {
+            return !$this->isManualAvailabilityBlocked($unit)
+                && !is_null($unit->max_occupancy)
+                && (int) $unit->max_occupancy > 0;
+        })->values();
+        $unknownUnits = $units->filter(
+            fn (PropertyUnit $unit) => is_null($unit->max_occupancy) || (int) $unit->max_occupancy <= 0
+        );
+
+        if ($eligibleUnits->isEmpty()) {
+            $knownCapacityUnits = $units->filter(
+                fn (PropertyUnit $unit) => !is_null($unit->max_occupancy) && (int) $unit->max_occupancy > 0
+            );
+
+            if ($knownCapacityUnits->isEmpty()) {
+                return $this->unknownAvailabilityPayload(
+                    $property->id,
+                    $option->id,
+                    $startDate,
+                    $endDate,
+                    $stayMode,
+                    'bedspace',
+                    $unknownUnits->count(),
+                    0
+                );
+            }
+
+            return $this->availabilityPayload(
+                $property->id,
+                $option->id,
+                false,
+                'full',
+                0,
+                0,
+                $unknownUnits->count(),
+                $startDate,
+                $endDate,
+                $stayMode,
+                'bedspace',
+                0,
+                0,
+                0
+            );
+        }
+
+        $occupiedCounts = $this->getOccupiedUnitCounts($property->id, $startDate, $endDate);
+        $capacityTotal = (int) $eligibleUnits->sum(fn (PropertyUnit $unit) => (int) $unit->max_occupancy);
+        $capacityAvailable = (int) $eligibleUnits->sum(function (PropertyUnit $unit) use ($occupiedCounts) {
+            return max((int) $unit->max_occupancy - (int) ($occupiedCounts[$unit->id] ?? 0), 0);
+        });
+
+        return $this->availabilityPayload(
+            $property->id,
+            $option->id,
+            $capacityAvailable >= $guests,
+            $capacityAvailable >= $guests ? 'available' : 'full',
+            $capacityTotal,
+            $capacityAvailable,
+            $unknownUnits->count(),
+            $startDate,
+            $endDate,
+            $stayMode,
+            'bedspace',
+            $capacityTotal,
+            $capacityAvailable,
+            $eligibleUnits->count()
+        );
+    }
+
+    private function calculateAggregateUnitInventoryAvailability(
+        Property $property,
+        PublicPropertyOption $option,
+        string $startDate,
+        string $endDate,
+        string $stayMode,
+        int $guests
+    ): array {
+        $units = $this->getPropertyAvailabilityUnits($property);
+
+        if ($units->isEmpty()) {
+            return $this->unknownAvailabilityPayload(
+                $property->id,
+                $option->id,
+                $startDate,
+                $endDate,
+                $stayMode,
+                'unit'
+            );
+        }
+
+        $eligibleUnits = $units->filter(function (PropertyUnit $unit) {
+            return !$this->isManualAvailabilityBlocked($unit)
+                && !is_null($unit->max_occupancy)
+                && (int) $unit->max_occupancy > 0;
+        })->values();
+        $unknownUnits = $units->filter(
+            fn (PropertyUnit $unit) => is_null($unit->max_occupancy) || (int) $unit->max_occupancy <= 0
+        );
+
+        if ($eligibleUnits->isEmpty()) {
+            return $this->unknownAvailabilityPayload(
+                $property->id,
+                $option->id,
+                $startDate,
+                $endDate,
+                $stayMode,
+                'unit',
+                $unknownUnits->count(),
+                0
+            );
+        }
+
+        $occupiedCounts = $this->getOccupiedUnitCounts($property->id, $startDate, $endDate);
+        $unitsAvailable = (int) $eligibleUnits->filter(function (PropertyUnit $unit) use ($occupiedCounts, $option, $guests) {
+            $occupied = (int) ($occupiedCounts[$unit->id] ?? 0);
+            if ($option->rental_kind === 'whole_unit') {
+                return $occupied === 0;
+            }
+
+            return max((int) $unit->max_occupancy - $occupied, 0) >= $guests;
+        })->count();
+
+        return $this->availabilityPayload(
+            $property->id,
+            $option->id,
+            $unitsAvailable > 0,
+            $unitsAvailable > 0 ? 'available' : 'full',
+            $eligibleUnits->count(),
+            $unitsAvailable,
+            $unknownUnits->count(),
+            $startDate,
+            $endDate,
+            $stayMode,
+            'unit',
+            $eligibleUnits->count(),
+            $unitsAvailable,
+            $eligibleUnits->count()
         );
     }
 
@@ -684,7 +911,10 @@ class PublicPropertyAvailabilityService
         int $optionId,
         string $startDate,
         string $endDate,
-        string $stayMode
+        string $stayMode,
+        string $inventoryMode,
+        int $unitsUnknown = 1,
+        int $eligibleUnitsTotal = 0
     ): array {
         return $this->availabilityPayload(
             $propertyId,
@@ -693,10 +923,14 @@ class PublicPropertyAvailabilityService
             'unknown',
             1,
             0,
-            1,
+            $unitsUnknown,
             $startDate,
             $endDate,
-            $stayMode
+            $stayMode,
+            $inventoryMode,
+            0,
+            0,
+            $eligibleUnitsTotal
         );
     }
 
@@ -710,20 +944,58 @@ class PublicPropertyAvailabilityService
         int $unitsUnknown,
         string $startDate,
         string $endDate,
-        string $stayMode
+        string $stayMode,
+        string $inventoryMode,
+        int $capacityTotal,
+        int $capacityAvailable,
+        int $eligibleUnitsTotal
     ): array {
         return [
             'property_id' => $propertyId,
             'option_id' => $optionId,
             'available' => $available,
             'availability_status' => $status,
+            'inventory_mode' => $inventoryMode,
             'units_total' => $unitsTotal,
             'units_available' => $unitsAvailable,
             'units_unknown' => $unitsUnknown,
+            'capacity_total' => $capacityTotal,
+            'capacity_available' => $capacityAvailable,
+            'eligible_units_total' => $eligibleUnitsTotal,
             'start_date' => $startDate,
             'end_date' => $endDate,
             'stay_mode' => $stayMode,
         ];
+    }
+
+    private function getPropertyAvailabilityUnits(Property $property): Collection
+    {
+        $unitColumns = ['id', 'property_id', 'max_occupancy'];
+        if (Schema::hasColumn('property_units', 'manual_availability_status')) {
+            $unitColumns[] = 'manual_availability_status';
+        }
+
+        return PropertyUnit::query()
+            ->where('property_id', $property->id)
+            ->whereNull('deleted_at')
+            ->get($unitColumns);
+    }
+
+    private function isManualAvailabilityBlocked(PropertyUnit $unit): bool
+    {
+        return in_array(($unit->manual_availability_status ?? null), [
+            PropertyUnit::MANUAL_AVAILABILITY_ON_HOLD,
+            PropertyUnit::MANUAL_AVAILABILITY_OFF_MARKET,
+        ], true);
+    }
+
+    private function resolveInventoryMode(PublicPropertyOption $option): string
+    {
+        return match ($option->rental_kind) {
+            'whole_property' => 'property',
+            'shared_space' => 'bedspace',
+            default => 'unit',
+        };
     }
 
     private function getOccupiedUnitCounts(int $propertyId, string $startDate, string $endDate): Collection

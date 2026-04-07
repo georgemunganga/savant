@@ -125,9 +125,15 @@
                                                         <div class="property-info-item font-13">
                                                             <i
                                                                 class="ri-checkbox-circle-fill me-1 "></i>{{ $property->available_unit }}
-                                                            {{ __('Available') }}
+                                                            {{ __('Available Units Now') }}
                                                         </div>
                                                     </div>
+                                                    @if ($property->public_category === 'boarding')
+                                                        <p class="mt-3 mb-0 font-13 text-muted">
+                                                            {{ __('Available bedspaces now') }}:
+                                                            <strong>{{ $property->available_bedspace ?? 0 }}</strong>
+                                                        </p>
+                                                    @endif
                                                     <a href="{{ route('owner.property.show', $property->id) }}"
                                                         class="theme-btn mt-20 w-100"
                                                         title="{{ __('View Details') }}">{{ __('View Details') }}</a>
