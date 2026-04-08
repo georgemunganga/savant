@@ -296,9 +296,30 @@
                                                     name="propertyUnit[public_max_guests][]"
                                                     value="{{ @$publicOption->max_guests ?? $propertyUnit->max_occupancy }}">
                                             </div>
-                                            <div class="col-md-4 mb-25 d-flex align-items-end">
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-3 mb-25">
+                                                <label class="label-text-title color-heading font-medium mb-2">Security Deposit Type</label>
+                                                <select name="propertyUnit[public_security_deposit_type][]" class="form-control js-public-unit-field">
+                                                    <option value="0"
+                                                        {{ (int) (@$publicOption->security_deposit_type ?? $propertyUnit->security_deposit_type ?? TYPE_FIXED) === TYPE_FIXED ? 'selected' : '' }}>
+                                                        {{ __('Fixed') }}
+                                                    </option>
+                                                    <option value="1"
+                                                        {{ (int) (@$publicOption->security_deposit_type ?? $propertyUnit->security_deposit_type ?? TYPE_FIXED) === TYPE_PERCENTAGE ? 'selected' : '' }}>
+                                                        {{ __('Percentage') }}
+                                                    </option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-3 mb-25">
+                                                <label class="label-text-title color-heading font-medium mb-2">Security Deposit</label>
+                                                <input type="number" step="any" min="0" class="form-control js-public-unit-field"
+                                                    name="propertyUnit[public_security_deposit_value][]"
+                                                    value="{{ @$publicOption->security_deposit_value ?? $propertyUnit->security_deposit ?? 0 }}">
+                                            </div>
+                                            <div class="col-md-6 mb-25 d-flex align-items-end">
                                                 <small class="text-muted">
-                                                    Set this to Enabled first if you want these website values to be saved for this unit.
+                                                    Set this to Enabled first if you want these website values to be saved for this unit. The public website will use this security deposit in the quote breakdown.
                                                 </small>
                                             </div>
                                         </div>

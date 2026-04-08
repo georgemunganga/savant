@@ -77,4 +77,18 @@ class PublicPropertyCatalogController extends Controller
             return $this->error([], $e->getMessage());
         }
     }
+
+    public function countries(Request $request)
+    {
+        try {
+            return $this->success(
+                [
+                    'countries' => $this->catalogService->getCountries((string) $request->get('q', '')),
+                ],
+                'Public countries fetched successfully'
+            );
+        } catch (Exception $e) {
+            return $this->error([], $e->getMessage());
+        }
+    }
 }

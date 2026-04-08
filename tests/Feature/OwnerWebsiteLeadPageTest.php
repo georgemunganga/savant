@@ -79,6 +79,13 @@ class OwnerWebsiteLeadPageTest extends TestCase
             'full_name' => 'Booked Guest',
             'email' => 'booked@example.com',
             'phone' => '+260971111111',
+            'date_of_birth' => '2000-01-01',
+            'nationality_country_id' => '230',
+            'id_type' => 'passport',
+            'id_number' => 'AB123456',
+            'occupation' => 'Student',
+            'is_student' => true,
+            'year_of_study' => '2nd year',
             'payment_plan' => 'later',
             'status' => PublicPropertyBooking::STATUS_CONFIRMED,
             'source' => 'website',
@@ -99,6 +106,12 @@ class OwnerWebsiteLeadPageTest extends TestCase
             'full_name' => 'Pending Assignment Guest',
             'email' => 'pending-assignment@example.com',
             'phone' => '+260974444444',
+            'date_of_birth' => '1999-05-10',
+            'nationality_country_id' => '230',
+            'id_type' => 'national_id',
+            'id_number' => '123456/78/1',
+            'occupation' => 'Engineer',
+            'is_student' => false,
             'payment_plan' => 'later',
             'status' => PublicPropertyBooking::STATUS_CONFIRMED,
             'source' => 'website',
@@ -117,6 +130,13 @@ class OwnerWebsiteLeadPageTest extends TestCase
             'full_name' => 'Waiting Guest',
             'email' => 'waiting@example.com',
             'phone' => '+260972222222',
+            'date_of_birth' => '2001-03-03',
+            'nationality_country_id' => '230',
+            'id_type' => 'national_id',
+            'id_number' => '876543/21/9',
+            'occupation' => 'Student',
+            'is_student' => true,
+            'year_of_study' => '1st year',
             'status' => PublicPropertyWaitlist::STATUS_PENDING,
         ]);
 
@@ -129,12 +149,17 @@ class OwnerWebsiteLeadPageTest extends TestCase
             ->assertSee('Live Bookings')
             ->assertSee('Assign tenant to unit')
             ->assertSee('Select Property')
-            ->assertSee('Select Unit');
+            ->assertSee('Select Unit')
+            ->assertSee('Date of Birth')
+            ->assertSee('Nationality')
+            ->assertSee('Passport')
+            ->assertSee('2nd year');
 
         $this->get(route('owner.website-leads.index', ['tab' => 'waitlist']))
             ->assertOk()
             ->assertSee('Waiting Guest')
-            ->assertSee('Waiting List');
+            ->assertSee('Waiting List')
+            ->assertSee('1st year');
     }
 
     public function test_owner_can_update_booking_and_waitlist_statuses(): void

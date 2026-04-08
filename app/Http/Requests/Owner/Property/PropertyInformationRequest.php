@@ -53,6 +53,8 @@ class PropertyInformationRequest extends FormRequest
             'whole_property_option.rental_kind' => 'exclude_unless:is_public,1|required_if:enable_whole_property_option,1|in:whole_property,whole_unit,private_room,shared_space',
             'whole_property_option.monthly_rate' => 'exclude_unless:is_public,1|required_if:enable_whole_property_option,1|numeric|min:0',
             'whole_property_option.nightly_rate' => 'exclude_unless:is_public,1|required_if:enable_whole_property_option,1|numeric|min:0',
+            'whole_property_option.security_deposit_type' => 'exclude_unless:is_public,1|nullable|in:0,1',
+            'whole_property_option.security_deposit_value' => 'exclude_unless:is_public,1|required_if:enable_whole_property_option,1|numeric|min:0',
             'whole_property_option.max_guests' => 'nullable|integer|min:1',
             'whole_property_option.sort_order' => 'nullable|integer|min:0',
             'whole_property_option.is_default' => 'nullable|in:0,1',
@@ -68,6 +70,7 @@ class PropertyInformationRequest extends FormRequest
             'whole_property_option.rental_kind.required_if' => __('Rental kind is required when the property-level website option is enabled.'),
             'whole_property_option.monthly_rate.required_if' => __('Monthly rate is required when the property-level website option is enabled.'),
             'whole_property_option.nightly_rate.required_if' => __('Nightly rate is required when the property-level website option is enabled.'),
+            'whole_property_option.security_deposit_value.required_if' => __('Security deposit is required when the property-level website option is enabled.'),
         ];
     }
 }

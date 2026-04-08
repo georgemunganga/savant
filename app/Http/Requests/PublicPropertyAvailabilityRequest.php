@@ -40,6 +40,10 @@ class PublicPropertyAvailabilityRequest extends FormRequest
         ];
     }
 
+    public function withValidator($validator)
+    {
+    }
+
     public function failedValidation(Validator $validator)
     {
         if ($this->header('accept') === 'application/json') {

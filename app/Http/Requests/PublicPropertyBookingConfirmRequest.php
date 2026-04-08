@@ -2,7 +2,7 @@
 
 namespace App\Http\Requests;
 
-class PublicPropertyBookingConfirmRequest extends PublicPropertyAvailabilityRequest
+class PublicPropertyBookingConfirmRequest extends PublicPropertyLeadDetailsRequest
 {
     public function rules()
     {

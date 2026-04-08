@@ -32,6 +32,13 @@ class PublicPropertyWaitlist extends Model
         'full_name',
         'email',
         'phone',
+        'date_of_birth',
+        'nationality_country_id',
+        'id_type',
+        'id_number',
+        'occupation',
+        'is_student',
+        'year_of_study',
         'status',
     ];
 
@@ -40,6 +47,8 @@ class PublicPropertyWaitlist extends Model
         'start_date' => 'date',
         'end_date' => 'date',
         'guests' => 'integer',
+        'date_of_birth' => 'date',
+        'is_student' => 'boolean',
     ];
 
     public function property(): BelongsTo

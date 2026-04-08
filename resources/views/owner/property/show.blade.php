@@ -129,12 +129,12 @@
                                                     <th class="text-end">{{ count($units) }}</th>
                                                 </tr>
                                                 <tr>
-                                                    <th>{{ __('Available Units Now') }}</th>
+                                                    <th>{{ __('Operational Units Available Now') }}</th>
                                                     <th class="text-end">{{ $property->available_unit }}</th>
                                                 </tr>
                                                 @if ($property->public_category === 'boarding')
                                                     <tr>
-                                                        <th>{{ __('Available Bedspaces Now') }}</th>
+                                                        <th>{{ __('Operational Bedspaces Available Now') }}</th>
                                                         <th class="text-end">{{ $property->available_bedspace }}</th>
                                                     </tr>
                                                     <tr>

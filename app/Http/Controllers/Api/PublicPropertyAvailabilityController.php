@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PublicPropertyAvailabilityRequest;
 use App\Http\Requests\PublicPropertyBookingConfirmRequest;
+use App\Http\Requests\PublicPropertyLeadDetailsRequest;
 use App\Services\PublicPropertyAvailabilityService;
 use App\Traits\ResponseTrait;
 use Exception;
@@ -36,7 +37,7 @@ class PublicPropertyAvailabilityController extends Controller
         }
     }
 
-    public function waitlist(int $propertyId, PublicPropertyAvailabilityRequest $request)
+    public function waitlist(int $propertyId, PublicPropertyLeadDetailsRequest $request)
     {
         try {
             $waitlist = $this->availabilityService->createWaitlist($propertyId, $request->validated());
@@ -54,6 +55,13 @@ class PublicPropertyAvailabilityController extends Controller
                     'full_name' => $waitlist->full_name,
                     'email' => $waitlist->email,
                     'phone' => $waitlist->phone,
+                    'date_of_birth' => $waitlist->date_of_birth?->toDateString(),
+                    'nationality_country_id' => $waitlist->nationality_country_id,
+                    'id_type' => $waitlist->id_type,
+                    'id_number' => $waitlist->id_number,
+                    'occupation' => $waitlist->occupation,
+                    'is_student' => (bool) $waitlist->is_student,
+                    'year_of_study' => $waitlist->year_of_study,
                 ],
             ], 'Joined waiting list successfully');
         } catch (ModelNotFoundException $e) {

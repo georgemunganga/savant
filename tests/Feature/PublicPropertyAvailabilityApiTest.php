@@ -236,14 +236,16 @@ class PublicPropertyAvailabilityApiTest extends TestCase
         ]);
 
         $response = $this->postJson("/api/public/properties/{$property->id}/waitlist", [
-            'option_id' => $option->id,
-            'stay_mode' => 'months',
-            'start_date' => '2026-05-01',
-            'end_date' => '2026-06-01',
-            'guests' => 1,
-            'full_name' => 'Jane Doe',
-            'email' => 'jane@example.com',
-            'phone' => '+260971111111',
+            ...$this->leadProfilePayload([
+                'option_id' => $option->id,
+                'stay_mode' => 'months',
+                'start_date' => '2026-05-01',
+                'end_date' => '2026-06-01',
+                'guests' => 1,
+                'full_name' => 'Jane Doe',
+                'email' => 'jane@example.com',
+                'phone' => '+260971111111',
+            ]),
         ]);
 
         $response
@@ -255,6 +257,11 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'property_id' => $property->id,
             'option_id' => $option->id,
             'email' => 'jane@example.com',
+            'nationality_country_id' => '230',
+            'id_type' => 'national_id',
+            'occupation' => 'Student',
+            'is_student' => 1,
+            'year_of_study' => '2nd year',
         ]);
     }
 
@@ -270,7 +277,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'rental_kind' => 'whole_unit',
         ]);
 
-        $response = $this->postJson("/api/public/properties/{$property->id}/bookings/confirm", [
+        $response = $this->postJson("/api/public/properties/{$property->id}/bookings/confirm", $this->leadProfilePayload([
             'option_id' => $option->id,
             'stay_mode' => 'months',
             'start_date' => '2026-05-01',
@@ -280,7 +287,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'email' => 'jane@example.com',
             'phone' => '+260971111111',
             'payment_plan' => 'later',
-        ]);
+        ]));
 
         $response
             ->assertOk()
@@ -310,6 +317,18 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'tenant_id' => $tenant->id,
             'email' => 'jane@example.com',
             'status' => PublicPropertyBooking::STATUS_CONFIRMED,
+            'nationality_country_id' => '230',
+            'id_type' => 'national_id',
+            'occupation' => 'Student',
+            'is_student' => 1,
+            'year_of_study' => '2nd year',
+        ]);
+        $this->assertDatabaseHas('tenant_details', [
+            'tenant_id' => $tenant->id,
+            'nationality_country_id' => '230',
+            'identity_document_type' => 'national_id',
+            'identity_document_number' => '123456/78/1',
+            'year_of_study' => '2nd year',
         ]);
 
         Mail::assertSent(TenantPortalActionMail::class, 2);
@@ -353,7 +372,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'status' => TENANT_STATUS_ACTIVE,
         ]);
 
-        $this->postJson("/api/public/properties/{$property->id}/bookings/confirm", [
+        $this->postJson("/api/public/properties/{$property->id}/bookings/confirm", $this->leadProfilePayload([
             'option_id' => $option->id,
             'stay_mode' => 'months',
             'start_date' => '2026-05-01',
@@ -363,7 +382,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'email' => 'existing@example.com',
             'phone' => '+260971111111',
             'payment_plan' => 'later',
-        ])
+        ]))
             ->assertOk()
             ->assertJsonPath('status', true)
             ->assertJsonPath('data.requires_confirmation', false)
@@ -403,6 +422,13 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'guests' => 1,
             'full_name' => 'Optional Phone',
             'email' => 'optional-phone@example.com',
+            'date_of_birth' => '2000-01-01',
+            'nationality_country_id' => '230',
+            'id_type' => 'national_id',
+            'id_number' => '123456/78/1',
+            'occupation' => 'Student',
+            'is_student' => true,
+            'year_of_study' => '2nd year',
             'payment_plan' => 'later',
         ])
             ->assertOk()
@@ -458,7 +484,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'status' => TENANT_STATUS_ACTIVE,
         ]);
 
-        $this->postJson("/api/public/properties/{$secondProperty->id}/bookings/confirm", [
+        $this->postJson("/api/public/properties/{$secondProperty->id}/bookings/confirm", $this->leadProfilePayload([
             'option_id' => $option->id,
             'stay_mode' => 'months',
             'start_date' => '2026-09-01',
@@ -468,7 +494,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'email' => 'repeat@example.com',
             'phone' => '+260972827372',
             'payment_plan' => 'later',
-        ])
+        ]))
             ->assertOk()
             ->assertJsonPath('status', true)
             ->assertJsonPath('data.requires_confirmation', false)
@@ -552,7 +578,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'unit_id' => $firstUnit->id,
         ]);
 
-        $this->postJson("/api/public/properties/{$secondProperty->id}/bookings/confirm", [
+        $this->postJson("/api/public/properties/{$secondProperty->id}/bookings/confirm", $this->leadProfilePayload([
             'option_id' => $secondOption->id,
             'stay_mode' => 'months',
             'start_date' => '2026-07-01',
@@ -562,7 +588,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'email' => 'repeat-confirm@example.com',
             'phone' => '+260971111111',
             'payment_plan' => 'later',
-        ])
+        ]))
             ->assertOk()
             ->assertJsonPath('status', true)
             ->assertJsonPath('data.requires_confirmation', true)
@@ -626,7 +652,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'unit_id' => $firstUnit->id,
         ]);
 
-        $this->postJson("/api/public/properties/{$secondProperty->id}/bookings/confirm", [
+        $this->postJson("/api/public/properties/{$secondProperty->id}/bookings/confirm", $this->leadProfilePayload([
             'option_id' => $secondOption->id,
             'stay_mode' => 'months',
             'start_date' => '2026-07-01',
@@ -637,7 +663,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'phone' => '+260971111111',
             'payment_plan' => 'later',
             'confirm_existing_booking' => true,
-        ])
+        ]))
             ->assertOk()
             ->assertJsonPath('status', true)
             ->assertJsonPath('data.requires_confirmation', false)
@@ -727,7 +753,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'late_fee' => 0,
         ]);
 
-        $this->postJson("/api/public/properties/{$secondProperty->id}/bookings/confirm", [
+        $this->postJson("/api/public/properties/{$secondProperty->id}/bookings/confirm", $this->leadProfilePayload([
             'option_id' => $secondOption->id,
             'stay_mode' => 'months',
             'start_date' => '2026-07-01',
@@ -737,7 +763,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'email' => 'pending-fee@example.com',
             'phone' => '+260971111111',
             'payment_plan' => 'later',
-        ])
+        ]))
             ->assertOk()
             ->assertJsonPath('status', true)
             ->assertJsonPath('data.requires_fee_clearance', true)
@@ -817,7 +843,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'late_fee' => 300,
         ]);
 
-        $this->postJson("/api/public/properties/{$secondProperty->id}/bookings/confirm", [
+        $this->postJson("/api/public/properties/{$secondProperty->id}/bookings/confirm", $this->leadProfilePayload([
             'option_id' => $secondOption->id,
             'stay_mode' => 'months',
             'start_date' => '2026-07-01',
@@ -827,7 +853,7 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'email' => 'overdue-fee@example.com',
             'phone' => '+260971111111',
             'payment_plan' => 'later',
-        ])
+        ]))
             ->assertOk()
             ->assertJsonPath('status', true)
             ->assertJsonPath('data.requires_fee_clearance', true)
@@ -957,5 +983,18 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'property_id' => $property->id,
             'unit_id' => $unit->id,
         ]);
+    }
+
+    private function leadProfilePayload(array $overrides = []): array
+    {
+        return array_merge([
+            'date_of_birth' => '2000-01-01',
+            'nationality_country_id' => '230',
+            'id_type' => 'national_id',
+            'id_number' => '123456/78/1',
+            'occupation' => 'Student',
+            'is_student' => true,
+            'year_of_study' => '2nd year',
+        ], $overrides);
     }
 }

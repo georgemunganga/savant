@@ -82,6 +82,34 @@ class PublicPropertyCatalogService
         ];
     }
 
+    public function getCountries(string $query = ''): array
+    {
+        $needle = Str::lower(trim($query));
+        $rows = csvToArray(public_path('file/countries.csv')) ?: [];
+
+        return collect($rows)
+            ->filter(function (array $row) use ($needle) {
+                if (!isset($row['id'], $row['country_name'])) {
+                    return false;
+                }
+
+                if ($needle === '') {
+                    return true;
+                }
+
+                return Str::contains(Str::lower((string) $row['country_name']), $needle)
+                    || Str::contains(Str::lower((string) ($row['sortname'] ?? '')), $needle);
+            })
+            ->map(fn (array $row) => [
+                'id' => (string) $row['id'],
+                'name' => (string) $row['country_name'],
+                'sortname' => (string) ($row['sortname'] ?? ''),
+            ])
+            ->sortBy('name')
+            ->values()
+            ->all();
+    }
+
     private function basePublicProperties(): Builder
     {
         return Property::query()
@@ -196,7 +224,7 @@ class PublicPropertyCatalogService
             'district' => $district,
             'address' => $address,
             'category' => $property->public_category,
-            'category_label' => ucfirst($property->public_category),
+            'category_label' => $this->getPublicCategoryLabel($property->public_category),
             'image' => $image,
             'gallery' => $gallery,
             'amenities' => $amenities,
@@ -243,6 +271,8 @@ class PublicPropertyCatalogService
                     'summary' => $this->getOptionSummary($property, $option),
                     'monthly_rate' => $this->nullableMoney($option->monthly_rate),
                     'nightly_rate' => $this->nullableMoney($option->nightly_rate),
+                    'security_deposit_type' => $this->normalizeSecurityDepositType($option->security_deposit_type),
+                    'security_deposit_value' => $this->nullableMoney($option->security_deposit_value) ?? 0,
                     'max_guests' => $maxGuests,
                     'status' => (int) $option->status,
                     'sort_order' => (int) $option->sort_order,
@@ -276,7 +306,7 @@ class PublicPropertyCatalogService
             'address' => $address,
             'map_link' => $property->propertyDetail?->map_link,
             'category' => $property->public_category,
-            'category_label' => ucfirst($property->public_category),
+            'category_label' => $this->getPublicCategoryLabel($property->public_category),
             'image' => $this->buildGallery($property)[0] ?? $property->thumbnail_image,
             'gallery' => $this->buildGallery($property),
             'amenities' => $this->getPropertyAmenities($property),
@@ -420,7 +450,7 @@ class PublicPropertyCatalogService
             if ($location) {
                 $suggestions->push([
                     'label' => $location,
-                    'description' => ucfirst($property->public_category) . ' listings in ' . $location,
+                    'description' => $this->getPublicCategoryLabel($property->public_category) . ' listings in ' . $location,
                 ]);
             }
 
@@ -547,6 +577,20 @@ class PublicPropertyCatalogService
             'shared_space' => 'Per bed space',
             default => 'Public option',
         };
+    }
+
+    private function getPublicCategoryLabel(?string $category): string
+    {
+        return match ($category) {
+            'boarding' => 'Bed Space',
+            'apartment' => 'Apartment',
+            default => ucfirst((string) $category),
+        };
+    }
+
+    private function normalizeSecurityDepositType($value): string
+    {
+        return (int) $value === TYPE_PERCENTAGE ? 'percentage' : 'fixed';
     }
 
     private function selectSummaryOption(Property $property, Collection $matchingOptions, string $stayMode): ?PublicPropertyOption

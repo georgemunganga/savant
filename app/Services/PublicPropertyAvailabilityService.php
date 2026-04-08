@@ -9,6 +9,7 @@ use App\Models\PublicPropertyBooking;
 use App\Models\PublicPropertyOption;
 use App\Models\PublicPropertyWaitlist;
 use App\Models\Tenant;
+use App\Models\TenantDetails;
 use App\Models\User;
 use App\Models\TenantUnitAssignment;
 use Carbon\Carbon;
@@ -60,6 +61,13 @@ class PublicPropertyAvailabilityService
             'full_name' => $payload['full_name'],
             'email' => $payload['email'],
             'phone' => $payload['phone'],
+            'date_of_birth' => Carbon::parse($payload['date_of_birth'])->toDateString(),
+            'nationality_country_id' => (string) $payload['nationality_country_id'],
+            'id_type' => (string) $payload['id_type'],
+            'id_number' => (string) $payload['id_number'],
+            'occupation' => (string) $payload['occupation'],
+            'is_student' => (bool) $payload['is_student'],
+            'year_of_study' => $this->normalizeYearOfStudy($payload),
             'status' => 'pending',
         ]);
     }
@@ -113,6 +121,8 @@ class PublicPropertyAvailabilityService
                 $this->tenantAccessService->sendAccountSetupEmail($user, $property->owner_user_id);
             }
 
+            $this->syncTenantLeadProfile($user, $tenant, $payload, $accountCreated);
+
             $shouldAutoAssign = !$bookingRequirement['requires_confirmation'];
             $assignmentChanged = false;
             if ($shouldAutoAssign) {
@@ -153,6 +163,13 @@ class PublicPropertyAvailabilityService
                 'full_name' => $payload['full_name'],
                 'email' => $user->email,
                 'phone' => $this->normalizePhone($payload['phone'] ?? null),
+                'date_of_birth' => Carbon::parse($payload['date_of_birth'])->toDateString(),
+                'nationality_country_id' => (string) $payload['nationality_country_id'],
+                'id_type' => (string) $payload['id_type'],
+                'id_number' => (string) $payload['id_number'],
+                'occupation' => (string) $payload['occupation'],
+                'is_student' => (bool) $payload['is_student'],
+                'year_of_study' => $this->normalizeYearOfStudy($payload),
                 'payment_plan' => $payload['payment_plan'],
                 'status' => PublicPropertyBooking::STATUS_CONFIRMED,
                 'source' => 'website',
@@ -180,6 +197,13 @@ class PublicPropertyAvailabilityService
                     'start_date' => $startDate,
                     'end_date' => $endDate,
                     'guests' => (int) $payload['guests'],
+                    'date_of_birth' => Carbon::parse($payload['date_of_birth'])->toDateString(),
+                    'nationality_country_id' => (string) $payload['nationality_country_id'],
+                    'id_type' => (string) $payload['id_type'],
+                    'id_number' => (string) $payload['id_number'],
+                    'occupation' => (string) $payload['occupation'],
+                    'is_student' => (bool) $payload['is_student'],
+                    'year_of_study' => $this->normalizeYearOfStudy($payload),
                     'payment_plan' => $payload['payment_plan'],
                     'account_created' => $accountCreated,
                     'setup_email_sent' => $setupEmailSent,
@@ -335,11 +359,69 @@ class PublicPropertyAvailabilityService
         return [$user->fresh(), $tenant->fresh(), $accountCreated];
     }
 
+    private function syncTenantLeadProfile(User $user, Tenant $tenant, array $payload, bool $accountCreated): void
+    {
+        $dateOfBirth = Carbon::parse($payload['date_of_birth'])->toDateString();
+        $occupation = trim((string) ($payload['occupation'] ?? ''));
+        $nationalityCountryId = trim((string) ($payload['nationality_country_id'] ?? ''));
+        $idType = trim((string) ($payload['id_type'] ?? ''));
+        $idNumber = trim((string) ($payload['id_number'] ?? ''));
+        $isStudent = (bool) ($payload['is_student'] ?? false);
+        $yearOfStudy = $this->normalizeYearOfStudy($payload);
+        $usersHasDateOfBirth = Schema::hasColumn('users', 'date_of_birth');
+        $tenantsHasDateOfBirth = Schema::hasColumn('tenants', 'date_of_birth');
+        $tenantsHasTenantType = Schema::hasColumn('tenants', 'tenant_type');
+        $tenantDetailsHasNationality = Schema::hasColumn('tenant_details', 'nationality_country_id');
+        $tenantDetailsHasIdentityType = Schema::hasColumn('tenant_details', 'identity_document_type');
+        $tenantDetailsHasIdentityNumber = Schema::hasColumn('tenant_details', 'identity_document_number');
+        $tenantDetailsHasYearOfStudy = Schema::hasColumn('tenant_details', 'year_of_study');
+
+        if ($usersHasDateOfBirth && ($accountCreated || blank($user->date_of_birth))) {
+            $user->date_of_birth = $dateOfBirth;
+            $user->save();
+        }
+
+        if ($accountCreated || blank($tenant->job) || $tenant->job === __('Guest')) {
+            $tenant->job = $occupation;
+        }
+        if ($tenantsHasDateOfBirth && ($accountCreated || blank($tenant->date_of_birth))) {
+            $tenant->date_of_birth = $dateOfBirth;
+        }
+        if ($tenantsHasTenantType && $accountCreated) {
+            $tenant->tenant_type = $isStudent ? 'student' : ($tenant->tenant_type ?: 'person');
+        } elseif ($tenantsHasTenantType && blank($tenant->tenant_type)) {
+            $tenant->tenant_type = $isStudent ? 'student' : 'person';
+        }
+        $tenant->save();
+
+        $details = TenantDetails::query()->firstOrCreate(['tenant_id' => $tenant->id]);
+        if ($tenantDetailsHasNationality && ($accountCreated || blank($details->nationality_country_id))) {
+            $details->nationality_country_id = $nationalityCountryId;
+        }
+        if ($tenantDetailsHasIdentityType && ($accountCreated || blank($details->identity_document_type))) {
+            $details->identity_document_type = $idType;
+        }
+        if ($tenantDetailsHasIdentityNumber && ($accountCreated || blank($details->identity_document_number))) {
+            $details->identity_document_number = $idNumber;
+        }
+        if ($tenantDetailsHasYearOfStudy && ($accountCreated || blank($details->year_of_study))) {
+            $details->year_of_study = $isStudent ? $yearOfStudy : null;
+        }
+        $details->save();
+    }
+
     private function normalizePhone($value): ?string
     {
         $phone = trim((string) $value);
 
         return $phone !== '' ? $phone : null;
+    }
+
+    private function normalizeYearOfStudy(array $payload): ?string
+    {
+        $yearOfStudy = trim((string) ($payload['year_of_study'] ?? ''));
+
+        return !empty($payload['is_student']) && $yearOfStudy !== '' ? $yearOfStudy : null;
     }
 
     private function resolveConcurrentBookingRequirement(Tenant $tenant, User $user): array

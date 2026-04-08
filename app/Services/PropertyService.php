@@ -803,6 +803,12 @@ class PropertyService
         $option->rental_kind = $request->input('whole_property_option.rental_kind', 'whole_property');
         $option->monthly_rate = $this->nullableNumeric($request->input('whole_property_option.monthly_rate'));
         $option->nightly_rate = $this->nullableNumeric($request->input('whole_property_option.nightly_rate'));
+        $option->security_deposit_type = $this->nullableInteger(
+            $request->input('whole_property_option.security_deposit_type')
+        ) ?? TYPE_FIXED;
+        $option->security_deposit_value = $this->nullableNumeric(
+            $request->input('whole_property_option.security_deposit_value')
+        ) ?? 0;
         $option->max_guests = $this->nullableInteger($request->input('whole_property_option.max_guests'));
         $option->status = ACTIVE;
         $option->sort_order = 0;
@@ -847,6 +853,12 @@ class PropertyService
         $option->nightly_rate = $this->nullableNumeric(
             data_get($request->input('propertyUnit.public_nightly_rate', []), $index)
         );
+        $option->security_deposit_type = $this->nullableInteger(
+            data_get($request->input('propertyUnit.public_security_deposit_type', []), $index, $unit->security_deposit_type)
+        ) ?? TYPE_FIXED;
+        $option->security_deposit_value = $this->nullableNumeric(
+            data_get($request->input('propertyUnit.public_security_deposit_value', []), $index, $unit->security_deposit)
+        ) ?? 0;
         $publicMaxGuests = $this->nullableInteger(
             data_get($request->input('propertyUnit.public_max_guests', []), $index)
         );

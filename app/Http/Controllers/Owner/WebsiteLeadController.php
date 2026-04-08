@@ -73,6 +73,7 @@ class WebsiteLeadController extends Controller
             $this->applyCommonFilters($query, $data['filters']);
 
             $data['records'] = $query->paginate(12)->withQueryString();
+            $this->appendLeadProfileDisplay($data['records']);
         } else {
             $query = PublicPropertyBooking::query()
                 ->with([
@@ -89,6 +90,7 @@ class WebsiteLeadController extends Controller
 
             $data['records'] = $query->paginate(12)->withQueryString();
             $this->appendBookingBillingState($data['records']);
+            $this->appendLeadProfileDisplay($data['records']);
         }
 
         return view('owner.website-leads.index', $data);
@@ -263,6 +265,28 @@ class WebsiteLeadController extends Controller
                         'status' => (int) $invoice->status === INVOICE_STATUS_OVER_DUE ? 'overdue' : 'pending',
                     ]
                     : null;
+
+                return $record;
+            })
+        );
+    }
+
+    private function appendLeadProfileDisplay($records): void
+    {
+        $records->setCollection(
+            $records->getCollection()->map(function ($record) {
+                $country = !blank($record->nationality_country_id)
+                    ? getCountryById($record->nationality_country_id)
+                    : null;
+
+                $record->nationality_name = is_array($country)
+                    ? ($country['name'] ?? null)
+                    : null;
+                $record->id_type_label = match ((string) $record->id_type) {
+                    'passport' => __('Passport'),
+                    'national_id' => __('National ID'),
+                    default => __('Not provided'),
+                };
 
                 return $record;
             })

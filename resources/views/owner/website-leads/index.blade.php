@@ -174,6 +174,40 @@
                                                 <span class="font-13 color-heading">{{ __('Guests') }}</span>
                                                 <span class="font-13">{{ $record->guests }}</span>
                                             </div>
+                                            <div class="py-2 px-0 d-flex justify-content-between align-items-center" style="border-bottom: 1px solid rgba(0,0,0,0.08);">
+                                                <span class="font-13 color-heading">{{ __('Date of Birth') }}</span>
+                                                <span class="font-13 text-end">
+                                                    {{ $record->date_of_birth ? \Carbon\Carbon::parse($record->date_of_birth)->format('d M Y') : __('Not provided') }}
+                                                </span>
+                                            </div>
+                                            <div class="py-2 px-0 d-flex justify-content-between align-items-center" style="border-bottom: 1px solid rgba(0,0,0,0.08);">
+                                                <span class="font-13 color-heading">{{ __('Nationality') }}</span>
+                                                <span class="font-13 text-end">{{ $record->nationality_name ?? __('Not provided') }}</span>
+                                            </div>
+                                            <div class="py-2 px-0 d-flex justify-content-between align-items-center" style="border-bottom: 1px solid rgba(0,0,0,0.08);">
+                                                <span class="font-13 color-heading">{{ __('ID Type') }}</span>
+                                                <span class="font-13 text-end">{{ $record->id_type_label ?? __('Not provided') }}</span>
+                                            </div>
+                                            <div class="py-2 px-0 d-flex justify-content-between align-items-center" style="border-bottom: 1px solid rgba(0,0,0,0.08);">
+                                                <span class="font-13 color-heading">{{ __('ID Number') }}</span>
+                                                <span class="font-13 text-end">{{ $record->id_number ?: __('Not provided') }}</span>
+                                            </div>
+                                            <div class="py-2 px-0 d-flex justify-content-between align-items-center" style="border-bottom: 1px solid rgba(0,0,0,0.08);">
+                                                <span class="font-13 color-heading">{{ __('Occupation') }}</span>
+                                                <span class="font-13 text-end">{{ $record->occupation ?: __('Not provided') }}</span>
+                                            </div>
+                                            <div class="py-2 px-0 d-flex justify-content-between align-items-center" style="border-bottom: 1px solid rgba(0,0,0,0.08);">
+                                                <span class="font-13 color-heading">{{ __('Student') }}</span>
+                                                <span class="font-13 text-end">
+                                                    {{ !empty($record->is_student) ? __('Yes') : __('No') }}
+                                                </span>
+                                            </div>
+                                            @if (!empty($record->is_student))
+                                                <div class="py-2 px-0 d-flex justify-content-between align-items-center" style="border-bottom: 1px solid rgba(0,0,0,0.08);">
+                                                    <span class="font-13 color-heading">{{ __('Year of Study') }}</span>
+                                                    <span class="font-13 text-end">{{ $record->year_of_study ?: __('Not provided') }}</span>
+                                                </div>
+                                            @endif
 
                                             @if ($activeTab === 'bookings')
                                                 <div class="py-2 px-0 d-flex justify-content-between align-items-center" style="border-bottom: 1px solid rgba(0,0,0,0.08);">

@@ -153,7 +153,9 @@ class PublicPropertyCatalogApiTest extends TestCase
         $detailResponse
             ->assertOk()
             ->assertJsonPath('data.property.id', (string) $property->id)
-            ->assertJsonCount(2, 'data.property.options');
+            ->assertJsonCount(2, 'data.property.options')
+            ->assertJsonPath('data.property.options.0.security_deposit_type', 'fixed')
+            ->assertJsonPath('data.property.options.0.security_deposit_value', 2500);
     }
 
     public function test_property_can_be_fetched_by_public_slug(): void
@@ -199,8 +201,21 @@ class PublicPropertyCatalogApiTest extends TestCase
 
         $response
             ->assertOk()
+            ->assertJsonPath('data.properties.0.category_label', 'Bed Space')
             ->assertJsonPath('data.properties.0.starting_option_label', 'Per bed space')
             ->assertJsonPath('data.properties.0.occupancy_label', 'Per bed space');
+    }
+
+    public function test_public_countries_endpoint_returns_searchable_country_results(): void
+    {
+        $response = $this->getJson('/api/public/countries?q=zam');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('status', true)
+            ->assertJsonFragment([
+                'name' => 'Zambia',
+            ]);
     }
 
     private function createPublicProperty(array $overrides = []): Property
@@ -244,6 +259,8 @@ class PublicPropertyCatalogApiTest extends TestCase
             'rental_kind' => 'whole_unit',
             'monthly_rate' => $overrides['monthly_rate'] ?? 12000,
             'nightly_rate' => $overrides['nightly_rate'] ?? 700,
+            'security_deposit_type' => $overrides['security_deposit_type'] ?? TYPE_FIXED,
+            'security_deposit_value' => $overrides['security_deposit_value'] ?? 2500,
             'max_guests' => $overrides['max_guests'] ?? 2,
             'status' => ACTIVE,
             'sort_order' => 1,

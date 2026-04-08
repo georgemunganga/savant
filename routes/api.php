@@ -41,6 +41,7 @@ Route::get('languages', [SettingController::class, 'getLanguage']);
 Route::get('language-data/{code}', [SettingController::class, 'getLanguageJson']);
 Route::get('public/home', [PublicPropertyCatalogController::class, 'home']);
 Route::get('public/properties', [PublicPropertyCatalogController::class, 'index']);
+Route::get('public/countries', [PublicPropertyCatalogController::class, 'countries']);
 Route::get('public/properties/by-slug/{slug}', [PublicPropertyCatalogController::class, 'showBySlug']);
 Route::get('public/properties/{propertyId}', [PublicPropertyCatalogController::class, 'show']);
 Route::post(

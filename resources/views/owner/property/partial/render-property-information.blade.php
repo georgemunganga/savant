@@ -162,7 +162,7 @@
                                 Apartments
                             </option>
                             <option value="boarding" {{ @$property->public_category === 'boarding' ? 'selected' : '' }}>
-                                Boarding
+                                Bed Space
                             </option>
                         </select>
                         <small class="text-muted d-block mt-2">
@@ -204,7 +204,7 @@
                     </div>
 
                     <div class="row js-whole-property-option-fields">
-                        <div class="col-md-3 mb-25">
+                        <div class="col-md-2 mb-25">
                             <label class="label-text-title color-heading font-medium mb-2">Rental Kind <span class="text-danger">*</span></label>
                             <select class="form-control js-whole-property-option-field" name="whole_property_option[rental_kind]">
                                 @foreach ($wholePropertyRentalKinds as $value => $label)
@@ -228,14 +228,31 @@
                                 value="{{ @$wholePublicOption->nightly_rate }}">
                         </div>
                         <div class="col-md-2 mb-25">
+                            <label class="label-text-title color-heading font-medium mb-2">Security Deposit Type</label>
+                            <select class="form-control js-whole-property-option-field" name="whole_property_option[security_deposit_type]">
+                                <option value="0" {{ (int) (@$wholePublicOption->security_deposit_type ?? TYPE_FIXED) === TYPE_FIXED ? 'selected' : '' }}>
+                                    {{ __('Fixed') }}
+                                </option>
+                                <option value="1" {{ (int) (@$wholePublicOption->security_deposit_type ?? TYPE_FIXED) === TYPE_PERCENTAGE ? 'selected' : '' }}>
+                                    {{ __('Percentage') }}
+                                </option>
+                            </select>
+                        </div>
+                        <div class="col-md-2 mb-25">
+                            <label class="label-text-title color-heading font-medium mb-2">Security Deposit</label>
+                            <input type="number" min="0" step="any" class="form-control js-whole-property-option-field"
+                                name="whole_property_option[security_deposit_value]"
+                                value="{{ @$wholePublicOption->security_deposit_value ?? 0 }}">
+                        </div>
+                        <div class="col-md-2 mb-25">
                             <label class="label-text-title color-heading font-medium mb-2">Max Guests</label>
                             <input type="number" min="1" class="form-control js-whole-property-option-field"
                                 name="whole_property_option[max_guests]"
                                 value="{{ @$wholePublicOption->max_guests }}">
                         </div>
-                        <div class="col-md-5 mb-25 d-flex align-items-end">
+                        <div class="col-md-12 mb-25">
                             <small class="text-muted">
-                                Use <strong>Per Bed Space</strong> for boarding capacity across the property. Use the unit-level options below for whole-unit or private-room website choices.
+                                Use <strong>Per Bed Space</strong> for boarding capacity across the property. Use the unit-level options below for whole-unit or private-room website choices. The public website will quote this security deposit instead of adding a service fee.
                             </small>
                         </div>
                     </div>
