@@ -581,6 +581,8 @@ class PublicPropertyAvailabilityService
         $tenant->general_rent = (float) ($stayMode === 'months'
             ? ($option->monthly_rate ?? 0)
             : ($option->nightly_rate ?? 0));
+        $tenant->security_deposit_type = (int) ($option->security_deposit_type ?? TYPE_FIXED);
+        $tenant->security_deposit = (float) ($option->security_deposit_value ?? 0);
         $tenant->due_date = (int) Carbon::parse($startDate)->day;
         $tenant->lease_start_date = $startDate;
         $tenant->lease_end_date = $endDate;

@@ -306,6 +306,8 @@ class PublicPropertyAvailabilityApiTest extends TestCase
         $this->assertSame($unit->id, (int) $tenant->unit_id);
         $this->assertSame('2026-05-01', (string) $tenant->lease_start_date);
         $this->assertSame('2026-06-01', (string) $tenant->lease_end_date);
+        $this->assertSame(TYPE_FIXED, (int) $tenant->security_deposit_type);
+        $this->assertSame(0.0, (float) $tenant->security_deposit);
         $this->assertDatabaseHas('tenant_unit_assignments', [
             'tenant_id' => $tenant->id,
             'property_id' => $property->id,
@@ -400,6 +402,45 @@ class PublicPropertyAvailabilityApiTest extends TestCase
         $this->assertSame(1, User::query()->where('email', 'existing@example.com')->count());
 
         Mail::assertNothingSent();
+    }
+
+    public function test_booking_confirm_applies_public_option_security_deposit_to_the_tenant_assignment(): void
+    {
+        Mail::fake();
+        $this->enableTenantPortalMail();
+
+        $owner = $this->createOwnerUser();
+        [$property, $unit, $option] = $this->createPublicPropertyWithUnit([
+            'owner_user_id' => $owner->id,
+            'max_occupancy' => 2,
+            'rental_kind' => 'whole_unit',
+            'security_deposit_type' => TYPE_PERCENTAGE,
+            'security_deposit_value' => 12.5,
+        ]);
+
+        $this->postJson("/api/public/properties/{$property->id}/bookings/confirm", $this->leadProfilePayload([
+            'option_id' => $option->id,
+            'stay_mode' => 'months',
+            'start_date' => '2026-05-01',
+            'end_date' => '2026-06-01',
+            'guests' => 2,
+            'full_name' => 'Deposit Guest',
+            'email' => 'deposit-guest@example.com',
+            'phone' => '+260971111111',
+            'payment_plan' => 'later',
+        ]))
+            ->assertOk()
+            ->assertJsonPath('status', true)
+            ->assertJsonPath('data.requires_confirmation', false);
+
+        $tenant = Tenant::query()
+            ->whereHas('user', function ($query) {
+                $query->where('email', 'deposit-guest@example.com');
+            })
+            ->firstOrFail();
+
+        $this->assertSame(TYPE_PERCENTAGE, (int) $tenant->security_deposit_type);
+        $this->assertSame(12.5, (float) $tenant->security_deposit);
     }
 
     public function test_booking_confirm_allows_phone_to_be_optional(): void
@@ -915,6 +956,8 @@ class PublicPropertyAvailabilityApiTest extends TestCase
             'rental_kind' => $overrides['rental_kind'] ?? 'whole_unit',
             'monthly_rate' => 12000,
             'nightly_rate' => 700,
+            'security_deposit_type' => $overrides['security_deposit_type'] ?? TYPE_FIXED,
+            'security_deposit_value' => $overrides['security_deposit_value'] ?? 0,
             'max_guests' => $overrides['max_guests'] ?? 2,
             'status' => ACTIVE,
             'sort_order' => 1,
