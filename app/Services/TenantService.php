@@ -57,6 +57,63 @@ class TenantService
             ->get();
     }
 
+    private function getPortalAccessEligibilityFromListTenant(object $tenant): array
+    {
+        if ((int) ($tenant->userStatus ?? USER_STATUS_ACTIVE) === USER_STATUS_DELETED) {
+            return [false, __('Deleted users cannot receive portal access emails.')];
+        }
+
+        if ((int) ($tenant->status ?? 0) !== TENANT_STATUS_DRAFT) {
+            return [false, __('Only draft tenants can receive setup emails.')];
+        }
+
+        $email = trim((string) ($tenant->email ?? ''));
+        if ($email === '') {
+            return [false, __('Tenant email is required.')];
+        }
+
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return [false, __('Tenant email address is invalid.')];
+        }
+
+        return [true, null];
+    }
+
+    private function getPortalAccessEligibilityForSend(?Tenant $tenant): array
+    {
+        if (!$tenant || (int) $tenant->owner_user_id !== (int) getOwnerUserId()) {
+            return [false, __('Tenant not found.')];
+        }
+
+        if ((int) $tenant->status === TENANT_STATUS_CLOSE) {
+            return [false, __('Archived tenants cannot receive setup emails.')];
+        }
+
+        if ((int) $tenant->status !== TENANT_STATUS_DRAFT) {
+            return [false, __('Only draft tenants can receive setup emails.')];
+        }
+
+        $user = $tenant->user;
+        if (!$user) {
+            return [false, __('Tenant account is missing.')];
+        }
+
+        if ((int) $user->status === USER_STATUS_DELETED) {
+            return [false, __('Deleted users cannot receive portal access emails.')];
+        }
+
+        $email = trim((string) $user->email);
+        if ($email === '') {
+            return [false, __('Tenant email is required.')];
+        }
+
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return [false, __('Tenant email address is invalid.')];
+        }
+
+        return [true, null];
+    }
+
     public function getAllData()
     {
         $assignmentPropertySummarySql = "(select tenant_unit_assignments.tenant_id, GROUP_CONCAT(DISTINCT properties.name ORDER BY properties.name SEPARATOR ', ') as property_names
@@ -96,6 +153,18 @@ class TenantService
 
         return datatables($tenants)
             ->addIndexColumn()
+            ->addColumn('bulk_access', function ($tenant) {
+                [$eligible, $reason] = $this->getPortalAccessEligibilityFromListTenant($tenant);
+                $title = e($reason ?: __('Select tenant'));
+
+                return '<div class="form-check d-inline-flex align-items-center mb-0">
+                        <input class="form-check-input bulk-portal-access-check" type="checkbox" value="' . $tenant->id . '"
+                            data-tenant-id="' . $tenant->id . '"
+                            data-tenant-name="' . e(trim($tenant->first_name . ' ' . $tenant->last_name)) . '"
+                            data-tenant-email="' . e($tenant->email) . '"
+                            title="' . $title . '" ' . ($eligible ? '' : 'disabled') . '>
+                    </div>';
+            })
             ->addColumn('name', function ($tenant) {
                 return '<div class="tenants-tbl-info-object d-flex align-items-center">
                         <div class="flex-shrink-0">
@@ -152,7 +221,7 @@ class TenantService
                         <a href="' . route('owner.tenant.details', [$tenant->id, 'tab' => 'profile']) . '" class="p-1 tbl-action-btn" title="' . __('Edit') . '"><span class="iconify" data-icon="carbon:view-filled"></span></a>
                     </div>';
             })
-            ->rawColumns(['name', 'property', 'status', 'action'])
+            ->rawColumns(['bulk_access', 'name', 'property', 'status', 'action'])
             ->make(true);
     }
 
@@ -719,6 +788,88 @@ class TenantService
             return $this->success([], __(UPDATED_SUCCESSFULLY));
         } catch (Exception $e) {
             DB::rollBack();
+            return $this->error([], getErrorMessage($e, $e->getMessage()));
+        }
+    }
+
+    public function bulkPortalAccessStore(Request $request)
+    {
+        try {
+            if (getOption('send_email_status', 0) != ACTIVE) {
+                return $this->error([], __('Email sending is disabled.'));
+            }
+
+            $tenantIds = collect($request->tenant_ids ?? [])
+                ->map(fn($id) => (int) $id)
+                ->filter(fn($id) => $id > 0)
+                ->unique()
+                ->values();
+
+            if ($tenantIds->isEmpty()) {
+                return $this->error([], __('Select at least one tenant.'));
+            }
+
+            $tenants = Tenant::query()
+                ->where('owner_user_id', getOwnerUserId())
+                ->whereIn('id', $tenantIds)
+                ->with('user')
+                ->get()
+                ->keyBy('id');
+
+            $results = [];
+            $sentCount = 0;
+            $skippedCount = 0;
+
+            foreach ($tenantIds as $tenantId) {
+                $tenant = $tenants->get($tenantId);
+                [$eligible, $reason] = $this->getPortalAccessEligibilityForSend($tenant);
+
+                if (!$eligible) {
+                    $skippedCount++;
+                    $results[] = [
+                        'tenant_id' => $tenantId,
+                        'tenant_name' => $tenant?->user?->name,
+                        'email' => $tenant?->user?->email,
+                        'status' => 'skipped',
+                        'reason' => $reason,
+                    ];
+                    continue;
+                }
+
+                try {
+                    $this->tenantAccessService->sendAccountSetupEmail($tenant->user, getOwnerUserId());
+                    $sentCount++;
+                    $results[] = [
+                        'tenant_id' => $tenant->id,
+                        'tenant_name' => $tenant->user->name,
+                        'email' => $tenant->user->email,
+                        'status' => 'sent',
+                        'reason' => null,
+                    ];
+                } catch (Exception $e) {
+                    $skippedCount++;
+                    $results[] = [
+                        'tenant_id' => $tenant->id,
+                        'tenant_name' => $tenant->user?->name,
+                        'email' => $tenant->user?->email,
+                        'status' => 'failed',
+                        'reason' => getErrorMessage($e, $e->getMessage()),
+                    ];
+                }
+            }
+
+            $message = __('Portal access email sent to :sent tenant(s).', ['sent' => $sentCount]);
+            if ($skippedCount > 0) {
+                $message .= ' ' . __(':skipped tenant(s) were skipped.', ['skipped' => $skippedCount]);
+            }
+
+            return $this->success([
+                'requested_count' => $tenantIds->count(),
+                'sent_count' => $sentCount,
+                'skipped_count' => $skippedCount,
+                'results' => $results,
+            ], $message);
+        } catch (Exception $e) {
             return $this->error([], getErrorMessage($e, $e->getMessage()));
         }
     }

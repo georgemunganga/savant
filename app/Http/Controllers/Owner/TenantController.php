@@ -163,6 +163,16 @@ class TenantController extends Controller
         return $this->tenantService->bulkAssignmentStore($request);
     }
 
+    public function bulkPortalAccessStore(Request $request)
+    {
+        $request->validate([
+            'tenant_ids' => ['required', 'array', 'min:1'],
+            'tenant_ids.*' => ['required', 'integer'],
+        ]);
+
+        return $this->tenantService->bulkPortalAccessStore($request);
+    }
+
     public function edit($id)
     {
         $data['pageTitle'] = __('Edit Tenant');

@@ -71,6 +71,25 @@
                                         </div>
                                     </div>
                                 </div>
+                                <div class="row">
+                                    <div class="col-12">
+                                        <div class="bg-white theme-border radius-4 p-15 mb-25 d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 tenant-bulk-access-bar">
+                                            <div>
+                                                <h6 class="mb-1">{{ __('Portal Access') }}</h6>
+                                                <p class="font-13 mb-0 color-heading">{{ __('Send secure set-password links to selected draft tenants with email addresses.') }}</p>
+                                            </div>
+                                            <div class="d-flex flex-column flex-sm-row align-items-sm-center gap-2">
+                                                <div class="form-check mb-0">
+                                                    <input class="form-check-input" type="checkbox" id="bulkPortalAccessSelectAll">
+                                                    <label class="form-check-label font-13" for="bulkPortalAccessSelectAll">{{ __('Select visible eligible') }}</label>
+                                                </div>
+                                                <span class="font-13 color-heading" id="bulkPortalAccessSummary">{{ __('0 tenants selected') }}</span>
+                                                <button type="button" class="theme-btn w-auto" id="sendBulkPortalAccessButton" disabled>{{ __('Send Portal Access') }}</button>
+                                                <button type="button" class="theme-btn-back w-auto" id="clearBulkPortalAccessSelection" disabled>{{ __('Clear') }}</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <!-- Tenants Top Bar End -->
@@ -83,6 +102,14 @@
                                         @php
                                             $assignmentPropertyIds = $tenant->unitAssignments->pluck('property_id')->filter()->unique()->values();
                                             $assignmentUnitIds = $tenant->unitAssignments->pluck('unit_id')->filter()->unique()->values();
+                                            $portalAccessEligible = (int) $tenant->status === TENANT_STATUS_DRAFT && (int) $tenant->userStatus !== USER_STATUS_DELETED && filled($tenant->email) && filter_var($tenant->email, FILTER_VALIDATE_EMAIL);
+                                            $portalAccessReason = (int) $tenant->userStatus === USER_STATUS_DELETED
+                                                ? __('Deleted users cannot receive portal access emails.')
+                                                : ((int) $tenant->status !== TENANT_STATUS_DRAFT
+                                                    ? __('Only draft tenants can receive setup emails.')
+                                                    : (!filled($tenant->email)
+                                                        ? __('Tenant email is required.')
+                                                        : (!$portalAccessEligible ? __('Tenant email address is invalid.') : null)));
                                             if ($assignmentPropertyIds->isEmpty() && $tenant->property_id) {
                                                 $assignmentPropertyIds = collect([$tenant->property_id]);
                                             }
@@ -93,10 +120,30 @@
                                         <div
                                             class="single-tenant col-md-6 col-lg-6 col-xl-6 col-xxl-4 d-none"
                                             data-property-ids="{{ $assignmentPropertyIds->implode(',') }}"
-                                            data-unit-ids="{{ $assignmentUnitIds->implode(',') }}">
+                                            data-unit-ids="{{ $assignmentUnitIds->implode(',') }}"
+                                            data-tenant-id="{{ $tenant->id }}"
+                                            data-access-eligible="{{ $portalAccessEligible ? 1 : 0 }}"
+                                            data-access-reason="{{ $portalAccessReason }}"
+                                            data-tenant-name="{{ trim($tenant->first_name . ' ' . $tenant->last_name) }}"
+                                            data-tenant-email="{{ $tenant->email }}">
                                             <div
                                                 class="property-item tenants-item bg-off-white theme-border radius-10 mb-25">
                                                 <div class="property-item-content tenants-item-content p-20">
+                                                    <div class="d-flex justify-content-between align-items-center mb-10">
+                                                        <div class="form-check mb-0">
+                                                            <input class="form-check-input bulk-portal-access-check" type="checkbox"
+                                                                value="{{ $tenant->id }}"
+                                                                data-tenant-id="{{ $tenant->id }}"
+                                                                data-tenant-name="{{ trim($tenant->first_name . ' ' . $tenant->last_name) }}"
+                                                                data-tenant-email="{{ $tenant->email }}"
+                                                                title="{{ $portalAccessReason ?: __('Select tenant') }}"
+                                                                {{ $portalAccessEligible ? '' : 'disabled' }}>
+                                                            <label class="form-check-label font-13">{{ __('Portal access') }}</label>
+                                                        </div>
+                                                        @if (!$portalAccessEligible && $portalAccessReason)
+                                                            <span class="font-12 color-heading text-end">{{ $portalAccessReason }}</span>
+                                                        @endif
+                                                    </div>
                                                     <div
                                                         class="property-item-address tenants-img-info-box d-flex align-items-center mb-15">
                                                         <div class="flex-shrink-0 font-13">
@@ -222,6 +269,7 @@
                                                             class="table responsive theme-border p-20">
                                                             <thead>
                                                                 <tr>
+                                                                    <th><input type="checkbox" id="bulkPortalAccessTableSelectAll"></th>
                                                                     <th>{{ __('SL') }}</th>
                                                                     <th data-priority="1">{{ __('Name') }}</th>
                                                                     <th></th>
@@ -256,8 +304,23 @@
     </div>
     <input type="hidden" id="getAllTenantRoute" value="{{ route('owner.tenant.index', ['type' => 'all']) }}">
     <input type="hidden" id="getPropertyUnitsRoute" value="{{ route('owner.property.getPropertyUnits') }}">
+    <input type="hidden" id="bulkPortalAccessRoute" value="{{ route('owner.tenant.bulk-portal-access.store') }}">
+    <input type="hidden" id="bulkPortalAccessCsrfToken" value="{{ csrf_token() }}">
 
 @endsection
+@push('style')
+    <style>
+        .tenant-bulk-access-bar .form-check-label {
+            cursor: pointer;
+        }
+
+        .tenant-bulk-access-bar .theme-btn-back:disabled,
+        .tenant-bulk-access-bar .theme-btn:disabled {
+            opacity: 0.65;
+            cursor: not-allowed;
+        }
+    </style>
+@endpush
 @if (getOption('app_card_data_show', 1) != 1)
     @push('style')
         @include('common.layouts.datatable-style')

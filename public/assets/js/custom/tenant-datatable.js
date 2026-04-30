@@ -1,16 +1,18 @@
 (function ($) {
     "use strict";
-    $('#allTenantDataTable').DataTable({
+
+    var dataTable = $('#allTenantDataTable').DataTable({
         processing: true,
         serverSide: true,
         pageLength: 25,
         responsive: true,
         ajax: $('#getAllTenantRoute').val(),
-        order: [1, 'desc'],
+        order: [2, 'desc'],
         ordering: false,
         autoWidth: false,
         drawCallback: function () {
             $(".dataTables_length select").addClass("form-select form-select-sm");
+            $(document).trigger('tenant-datatable-draw');
         },
         language: {
             'paginate': {
@@ -19,6 +21,12 @@
             }
         },
         columns: [{
+            "data": 'bulk_access',
+            "name": 'bulk_access',
+            orderable: false,
+            searchable: false,
+        },
+        {
             "data": 'DT_RowIndex',
             "name": 'DT_RowIndex',
             orderable: false,
@@ -66,4 +74,6 @@
         },
         ]
     });
-})(jQuery)
+
+    window.allTenantDataTable = dataTable;
+})(jQuery);
