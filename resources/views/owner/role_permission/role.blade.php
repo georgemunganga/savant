@@ -79,6 +79,22 @@
                                     <option value="0">{{ __('Deactivate') }}</option>
                                 </select>
                             </div>
+                            <div class="col-md-12 mb-25">
+                                <label class="label-text-title color-heading font-medium mb-2">{{ __('Permissions') }}</label>
+                                <div class="theme-border radius-4 p-15 permission-checklist">
+                                    <div class="d-flex flex-wrap gap-2">
+                                        @foreach($permissions as $permission)
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" value="{{ $permission->name }}" name="permissions[]" id="add-permission-{{ $permission->id }}">
+                                                <label class="form-check-label" for="add-permission-{{ $permission->id }}">
+                                                    {{ $permission->name }}
+                                                </label>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                                <small class="text-muted d-block mt-2">{{ __('This app uses module-level permissions such as Manage Tenant or Manage Team.') }}</small>
+                            </div>
                         </div>
                     </div>
                     <div class="modal-footer justify-content-start">
@@ -122,6 +138,22 @@
                                     <option value="0">{{ __('Deactivate') }}</option>
                                 </select>
                             </div>
+                            <div class="col-md-12 mb-25">
+                                <label class="label-text-title color-heading font-medium mb-2">{{ __('Permissions') }}</label>
+                                <div class="theme-border radius-4 p-15 permission-checklist">
+                                    <div class="d-flex flex-wrap gap-2">
+                                        @foreach($permissions as $permission)
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" value="{{ $permission->name }}" name="permissions[]" id="edit-permission-{{ $permission->id }}">
+                                                <label class="form-check-label" for="edit-permission-{{ $permission->id }}">
+                                                    {{ $permission->name }}
+                                                </label>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                                <small class="text-muted d-block mt-2">{{ __('This app uses module-level permissions such as Manage Tenant or Manage Team.') }}</small>
+                            </div>
                         </div>
                     </div>
                     <div class="modal-footer justify-content-start">
@@ -150,6 +182,12 @@
 
 @push('style')
     @include('common.layouts.datatable-style')
+    <style>
+        .permission-checklist {
+            max-height: 260px;
+            overflow-y: auto;
+        }
+    </style>
 @endpush
 
 @push('script')

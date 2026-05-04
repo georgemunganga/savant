@@ -27,6 +27,7 @@ class RolePermissionController extends Controller
             return $this->rolePermissionService->getRoleList($request);
         } else {
             $data['pageTitle'] = __('Role & Permission');
+            $data['permissions'] = Permission::orderBy('name')->get();
             return view('owner.role_permission.role', $data);
         }
     }
@@ -34,6 +35,7 @@ class RolePermissionController extends Controller
     public function getInfo(Request $request){
 
         $data = $this->rolePermissionService->getInfo($request->id);
+        $data->permission_names = $data->permissions->pluck('name')->values();
         return $this->success($data);
 
     }

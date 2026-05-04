@@ -134,7 +134,7 @@ function sendBulkPortalAccess() {
 
     Swal.fire({
         title: 'Send portal access?',
-        text: 'Selected draft tenants will receive a secure set-password email for the tenant portal.',
+        text: 'Selected tenants who have not completed portal setup will receive a secure set-password email for the tenant portal.',
         icon: 'question',
         showCancelButton: true,
         confirmButtonColor: '#3085d6',
@@ -332,4 +332,19 @@ $(document).on('click', '#sendBulkPortalAccessButton', function () {
 
 $(document).on('tenant-datatable-draw', function () {
     syncBulkSelectionUI();
+});
+
+$(document).on('change', '.portal-access-switch', function () {
+    var checkbox = $(this);
+    if (checkbox.is(':disabled')) {
+        return;
+    }
+
+    var form = checkbox.closest('form');
+    var label = form.find('.portal-access-switch-label');
+    var labelOn = checkbox.data('label-on') || 'Portal Login Active';
+    var labelOff = checkbox.data('label-off') || 'Portal Login Inactive';
+
+    label.text(checkbox.is(':checked') ? labelOn : labelOff);
+    form.trigger('submit');
 });

@@ -39,7 +39,7 @@ class TenantService
             ->leftJoin(DB::raw('(select tenant_id, MAX(updated_at) as last_payment from invoices where status = 1 AND deleted_at IS NULL group By tenant_id) as inv_last'), ['inv_last.tenant_id' => 'tenants.id'])
             ->whereNull('users.deleted_at')
             ->where('tenants.status', '!=', TENANT_STATUS_CLOSE)
-            ->select(['tenants.*', 'inv.due', 'inv_last.last_payment', 'users.first_name', 'users.last_name', 'users.status as userStatus', 'users.contact_number', 'users.email', 'property_units.unit_name', 'properties.name as property_name'])
+            ->select(['tenants.*', 'inv.due', 'inv_last.last_payment', 'users.first_name', 'users.last_name', 'users.status as userStatus', 'users.contact_number', 'users.email', 'users.email_verified_at', 'property_units.unit_name', 'properties.name as property_name'])
             ->where('tenants.owner_user_id', getOwnerUserId())
             ->with(['unitAssignments.unit', 'unitAssignments.property'])
             ->get();
@@ -63,8 +63,8 @@ class TenantService
             return [false, __('Deleted users cannot receive portal access emails.')];
         }
 
-        if ((int) ($tenant->status ?? 0) !== TENANT_STATUS_DRAFT) {
-            return [false, __('Only draft tenants can receive setup emails.')];
+        if (!is_null($tenant->email_verified_at ?? null)) {
+            return [false, __('This tenant already completed portal setup.')];
         }
 
         $email = trim((string) ($tenant->email ?? ''));
@@ -89,10 +89,6 @@ class TenantService
             return [false, __('Archived tenants cannot receive setup emails.')];
         }
 
-        if ((int) $tenant->status !== TENANT_STATUS_DRAFT) {
-            return [false, __('Only draft tenants can receive setup emails.')];
-        }
-
         $user = $tenant->user;
         if (!$user) {
             return [false, __('Tenant account is missing.')];
@@ -100,6 +96,10 @@ class TenantService
 
         if ((int) $user->status === USER_STATUS_DELETED) {
             return [false, __('Deleted users cannot receive portal access emails.')];
+        }
+
+        if (!is_null($user->email_verified_at)) {
+            return [false, __('This tenant already completed portal setup.')];
         }
 
         $email = trim((string) $user->email);
@@ -112,6 +112,32 @@ class TenantService
         }
 
         return [true, null];
+    }
+
+    private function canTogglePortalAccess(object $tenant): bool
+    {
+        return (int) ($tenant->userStatus ?? USER_STATUS_ACTIVE) !== USER_STATUS_DELETED
+            && (int) ($tenant->status ?? 0) !== TENANT_STATUS_CLOSE;
+    }
+
+    private function renderPortalAccessSwitch(object $tenant): string
+    {
+        $checked = (int) ($tenant->userStatus ?? USER_STATUS_INACTIVE) === USER_STATUS_ACTIVE ? 'checked' : '';
+        $disabled = $this->canTogglePortalAccess($tenant) ? '' : 'disabled';
+        $label = (int) ($tenant->userStatus ?? USER_STATUS_INACTIVE) === USER_STATUS_ACTIVE ? __('Portal Login Active') : __('Portal Login Inactive');
+        $statusValue = (int) ($tenant->userStatus ?? USER_STATUS_INACTIVE) === USER_STATUS_ACTIVE ? USER_STATUS_INACTIVE : USER_STATUS_ACTIVE;
+
+        return '<form action="' . route('owner.tenant.portal-access.status', $tenant->id) . '" method="POST" class="portal-access-switch-form d-inline-flex align-items-center gap-2 mb-0">
+                <input type="hidden" name="_token" value="' . csrf_token() . '">
+                <input type="hidden" name="status" value="' . $statusValue . '">
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input portal-access-switch" type="checkbox" role="switch"
+                        data-label-on="' . e(__('Portal Login Active')) . '"
+                        data-label-off="' . e(__('Portal Login Inactive')) . '"
+                        ' . $checked . ' ' . $disabled . '>
+                </div>
+                <span class="font-12 color-heading portal-access-switch-label">' . e($label) . '</span>
+            </form>';
     }
 
     public function getAllData()
@@ -143,6 +169,7 @@ class TenantService
                 'users.status as userStatus',
                 'users.contact_number',
                 'users.email',
+                'users.email_verified_at',
                 'property_units.unit_name',
                 'properties.name as property_name',
                 'assignment_property_summary.property_names as assignment_property_names',
@@ -214,6 +241,7 @@ class TenantService
                         $html = ' <div class="status-btn status-btn-red font-13 radius-4">' . __('Archived') . '</div>';
                     }
                 }
+                $html .= '<div class="mt-2">' . $this->renderPortalAccessSwitch($tenant) . '</div>';
                 return $html;
             })
             ->addColumn('action', function ($tenant) {
@@ -313,11 +341,7 @@ class TenantService
 
     public function getDetailsById($id)
     {
-        if (auth()->user()->role == USER_ROLE_OWNER) {
-            $userId = auth()->id();
-        } else {
-            $userId = auth()->user()->owner_user_id;
-        }
+        $userId = getOwnerUserId();
         $data = Tenant::query()
             ->join('users', 'tenants.user_id', '=', 'users.id')
             ->whereNull('users.deleted_at')
@@ -325,7 +349,7 @@ class TenantService
             ->leftJoin('properties', 'tenants.property_id', '=', 'properties.id')
             ->leftJoin('property_details', 'properties.id', '=', 'property_details.property_id')
             ->leftJoin('property_units', 'tenants.unit_id', '=', 'property_units.id')
-            ->select(['tenants.*', 'users.first_name', 'users.last_name', 'users.contact_number', 'users.email', 'property_units.unit_name', 'properties.name as property_name', 'property_details.address as property_address', 'tenant_details.previous_address', 'tenant_details.previous_country_id', 'tenant_details.previous_state_id', 'tenant_details.previous_city_id', 'tenant_details.previous_zip_code', 'tenant_details.permanent_address', 'tenant_details.permanent_country_id', 'tenant_details.permanent_state_id', 'tenant_details.permanent_city_id', 'tenant_details.permanent_zip_code'])
+            ->select(['tenants.*', 'users.first_name', 'users.last_name', 'users.contact_number', 'users.email', 'users.status as userStatus', 'users.email_verified_at', 'property_units.unit_name', 'properties.name as property_name', 'property_details.address as property_address', 'tenant_details.previous_address', 'tenant_details.previous_country_id', 'tenant_details.previous_state_id', 'tenant_details.previous_city_id', 'tenant_details.previous_zip_code', 'tenant_details.permanent_address', 'tenant_details.permanent_country_id', 'tenant_details.permanent_state_id', 'tenant_details.permanent_city_id', 'tenant_details.permanent_zip_code'])
             ->where('tenants.owner_user_id', $userId)
             ->where('tenants.id', $id)
             ->firstOrFail();
@@ -871,6 +895,85 @@ class TenantService
             ], $message);
         } catch (Exception $e) {
             return $this->error([], getErrorMessage($e, $e->getMessage()));
+        }
+    }
+
+    public function activatePortalAccess(int $tenantId)
+    {
+        try {
+            $tenant = Tenant::query()
+                ->where('owner_user_id', getOwnerUserId())
+                ->where('id', $tenantId)
+                ->with('user')
+                ->firstOrFail();
+
+            if ((int) $tenant->status === TENANT_STATUS_CLOSE) {
+                throw new Exception(__('Archived tenants cannot use portal access.'));
+            }
+
+            if (!$tenant->user) {
+                throw new Exception(__('Tenant account is missing.'));
+            }
+
+            if ((int) $tenant->user->status === USER_STATUS_DELETED) {
+                throw new Exception(__('Deleted users cannot be reactivated.'));
+            }
+
+            $tenant->user->status = USER_STATUS_ACTIVE;
+            $tenant->user->save();
+
+            return redirect()
+                ->back()
+                ->with('success', __('Tenant portal login activated successfully.'));
+        } catch (Exception $e) {
+            return redirect()
+                ->back()
+                ->with('error', getErrorMessage($e, $e->getMessage()));
+        }
+    }
+
+    public function updatePortalAccessStatus(int $tenantId, int $status)
+    {
+        try {
+            $tenant = Tenant::query()
+                ->where('owner_user_id', getOwnerUserId())
+                ->where('id', $tenantId)
+                ->with('user')
+                ->firstOrFail();
+
+            if (!$tenant->user) {
+                throw new Exception(__('Tenant account is missing.'));
+            }
+
+            if ((int) $tenant->user->status === USER_STATUS_DELETED) {
+                throw new Exception(__('Deleted users cannot be updated.'));
+            }
+
+            if ((int) $tenant->status === TENANT_STATUS_CLOSE && $status === USER_STATUS_ACTIVE) {
+                throw new Exception(__('Archived tenants cannot use portal access.'));
+            }
+
+            $tenant->user->status = $status === USER_STATUS_ACTIVE ? USER_STATUS_ACTIVE : USER_STATUS_INACTIVE;
+            if ($tenant->user->status === USER_STATUS_INACTIVE) {
+                $tenant->user->remember_token = Str::random(60);
+            }
+            $tenant->user->save();
+
+            if ($tenant->user->status === USER_STATUS_INACTIVE && Schema::hasTable('oauth_access_tokens')) {
+                DB::table('oauth_access_tokens')
+                    ->where('user_id', $tenant->user->id)
+                    ->update(['revoked' => 1]);
+            }
+
+            return redirect()
+                ->back()
+                ->with('success', $tenant->user->status === USER_STATUS_ACTIVE
+                    ? __('Tenant portal login activated successfully.')
+                    : __('Tenant portal login deactivated successfully.'));
+        } catch (Exception $e) {
+            return redirect()
+                ->back()
+                ->with('error', getErrorMessage($e, $e->getMessage()));
         }
     }
 

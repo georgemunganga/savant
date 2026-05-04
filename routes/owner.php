@@ -71,6 +71,8 @@ Route::group(['prefix' => 'owner', 'as' => 'owner.', 'middleware' => ['auth', 'o
         Route::get('bulk-assignment', [TenantController::class, 'bulkAssignment'])->name('bulk-assignment')->middleware('can:Manage Tenant');
         Route::post('bulk-assignment/store', [TenantController::class, 'bulkAssignmentStore'])->name('bulk-assignment.store')->middleware('can:Manage Tenant');
         Route::post('bulk-portal-access/store', [TenantController::class, 'bulkPortalAccessStore'])->name('bulk-portal-access.store')->middleware('can:Manage Tenant');
+        Route::post('{id}/portal-access/activate', [TenantController::class, 'activatePortalAccess'])->name('portal-access.activate')->middleware('can:Manage Tenant');
+        Route::post('{id}/portal-access/status', [TenantController::class, 'updatePortalAccessStatus'])->name('portal-access.status')->middleware('can:Manage Tenant');
         Route::get('create', [TenantController::class, 'create'])->name('create');
         Route::get('edit/{id}', [TenantController::class, 'edit'])->name('edit');
         Route::post('store', [TenantController::class, 'store'])->name('store');
@@ -256,6 +258,9 @@ Route::group(['prefix' => 'owner', 'as' => 'owner.', 'middleware' => ['auth', 'o
     });
 
     Route::group(['prefix' => 'role-permission', 'as' => 'role-permission.'], function () {
+        Route::get('role-list', function () {
+            return redirect()->route('owner.role-permission.role-list');
+        })->middleware('can:Manage Team');
         Route::get('roles', [RolePermissionController::class, 'getRoleData'])->name('role-list')->middleware('can:Manage Team');
         Route::get('get-info', [RolePermissionController::class, 'getInfo'])->name('get-info');
         Route::post('store', [RolePermissionController::class, 'store'])->name('store');

@@ -61,6 +61,7 @@ class RolePermissionService
             $role->user_id = getOwnerUserId();
             $role->status = $request->status;
             $role->save();
+            $role->syncPermissions($request->permissions ?? []);
 
             DB::commit();
             $message = $request->id ? __(UPDATED_SUCCESSFULLY) : __(CREATED_SUCCESSFULLY);

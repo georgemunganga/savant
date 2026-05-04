@@ -76,7 +76,7 @@
                                         <div class="bg-white theme-border radius-4 p-15 mb-25 d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 tenant-bulk-access-bar">
                                             <div>
                                                 <h6 class="mb-1">{{ __('Portal Access') }}</h6>
-                                                <p class="font-13 mb-0 color-heading">{{ __('Send secure set-password links to selected draft tenants with email addresses.') }}</p>
+                                                <p class="font-13 mb-0 color-heading">{{ __('Send secure set-password links to selected tenants who have not completed portal setup yet.') }}</p>
                                             </div>
                                             <div class="d-flex flex-column flex-sm-row align-items-sm-center gap-2">
                                                 <div class="form-check mb-0">
@@ -102,11 +102,11 @@
                                         @php
                                             $assignmentPropertyIds = $tenant->unitAssignments->pluck('property_id')->filter()->unique()->values();
                                             $assignmentUnitIds = $tenant->unitAssignments->pluck('unit_id')->filter()->unique()->values();
-                                            $portalAccessEligible = (int) $tenant->status === TENANT_STATUS_DRAFT && (int) $tenant->userStatus !== USER_STATUS_DELETED && filled($tenant->email) && filter_var($tenant->email, FILTER_VALIDATE_EMAIL);
+                                            $portalAccessEligible = (int) $tenant->userStatus !== USER_STATUS_DELETED && is_null($tenant->email_verified_at) && filled($tenant->email) && filter_var($tenant->email, FILTER_VALIDATE_EMAIL);
                                             $portalAccessReason = (int) $tenant->userStatus === USER_STATUS_DELETED
                                                 ? __('Deleted users cannot receive portal access emails.')
-                                                : ((int) $tenant->status !== TENANT_STATUS_DRAFT
-                                                    ? __('Only draft tenants can receive setup emails.')
+                                                : (!is_null($tenant->email_verified_at)
+                                                    ? __('This tenant already completed portal setup.')
                                                     : (!filled($tenant->email)
                                                         ? __('Tenant email is required.')
                                                         : (!$portalAccessEligible ? __('Tenant email address is invalid.') : null)));
@@ -143,6 +143,26 @@
                                                         @if (!$portalAccessEligible && $portalAccessReason)
                                                             <span class="font-12 color-heading text-end">{{ $portalAccessReason }}</span>
                                                         @endif
+                                                    </div>
+                                                    <div class="d-flex justify-content-between align-items-center mb-15 flex-wrap gap-2">
+                                                        <span class="font-13 color-heading">{{ __('Portal Login') }}</span>
+                                                        <form action="{{ route('owner.tenant.portal-access.status', $tenant->id) }}" method="POST" class="portal-access-switch-form d-inline-flex align-items-center gap-2 mb-0">
+                                                            @csrf
+                                                            <input type="hidden" name="status" value="{{ $tenant->userStatus == USER_STATUS_ACTIVE ? USER_STATUS_INACTIVE : USER_STATUS_ACTIVE }}">
+                                                            <div class="form-check form-switch mb-0">
+                                                                <input
+                                                                    class="form-check-input portal-access-switch"
+                                                                    type="checkbox"
+                                                                    role="switch"
+                                                                    data-label-on="{{ __('Portal Login Active') }}"
+                                                                    data-label-off="{{ __('Portal Login Inactive') }}"
+                                                                    {{ $tenant->userStatus == USER_STATUS_ACTIVE ? 'checked' : '' }}
+                                                                    {{ $tenant->userStatus == USER_STATUS_DELETED || $tenant->status == TENANT_STATUS_CLOSE ? 'disabled' : '' }}>
+                                                            </div>
+                                                            <span class="font-12 color-heading portal-access-switch-label">
+                                                                {{ $tenant->userStatus == USER_STATUS_ACTIVE ? __('Portal Login Active') : __('Portal Login Inactive') }}
+                                                            </span>
+                                                        </form>
                                                     </div>
                                                     <div
                                                         class="property-item-address tenants-img-info-box d-flex align-items-center mb-15">
@@ -192,6 +212,9 @@
                                                                 <span class="bg-orange-transparent radius-4 px-1 py-1 orange-color font-13">{{ __('Archived') }}</span>
                                                             @else
                                                                 <span class="bg-blue-transparent radius-4 px-1 py-1 blue-color font-13">{{ __('Draft') }}</span>
+                                                            @endif
+                                                            @if ($tenant->userStatus == USER_STATUS_INACTIVE)
+                                                                <span class="bg-orange-transparent radius-4 px-2 py-1 orange-color font-13">{{ __('Portal Login Inactive') }}</span>
                                                             @endif
                                                         @endif
                                                     </div>
@@ -317,6 +340,14 @@
         .tenant-bulk-access-bar .theme-btn-back:disabled,
         .tenant-bulk-access-bar .theme-btn:disabled {
             opacity: 0.65;
+            cursor: not-allowed;
+        }
+
+        .portal-access-switch-form .form-check-input {
+            cursor: pointer;
+        }
+
+        .portal-access-switch-form .form-check-input:disabled {
             cursor: not-allowed;
         }
     </style>

@@ -3,6 +3,7 @@ $('#add').on('click', function () {
     selector.find('.is-invalid').removeClass('is-invalid');
     selector.find('.error-message').remove();
     selector.find('form').trigger('reset');
+    selector.find('input[name="permissions[]"]').prop('checked', false);
     selector.modal('show')
 })
 
@@ -18,6 +19,10 @@ function getDataEditRes(response) {
     selector.find('input[name=id]').val(response.data.id);
     selector.find('input[name=name]').val(response.data.display_name);
     selector.find('select[name=status]').val(response.data.status);
+    selector.find('input[name="permissions[]"]').prop('checked', false);
+    (response.data.permission_names || []).forEach(function (permissionName) {
+        selector.find('input[name="permissions[]"][value="' + permissionName.replace(/"/g, '\\"') + '"]').prop('checked', true);
+    });
     selector.modal('show');
 }
 

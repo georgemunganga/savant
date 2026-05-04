@@ -99,6 +99,29 @@
                                             <div class="account-settings-info-box">
                                                 <div class="row account-settings-info-item">
                                                     <div class="col-md-6 col-lg-4 col-xl-4 col-xxl-2">
+                                                        <p class="color-heading">{{ __('Portal Login') }}:</p>
+                                                    </div>
+                                                    <div class="col-md-6 col-lg-8 col-xl-8 col-xxl-10 d-flex align-items-center gap-2 flex-wrap">
+                                                        @if ($tenant->userStatus == USER_STATUS_ACTIVE)
+                                                            <span class="bg-green-transparent radius-4 px-2 py-1 green-color font-13">{{ __('Active') }}</span>
+                                                        @elseif ($tenant->userStatus == USER_STATUS_INACTIVE)
+                                                            <span class="bg-orange-transparent radius-4 px-2 py-1 orange-color font-13">{{ __('Inactive') }}</span>
+                                                        @elseif ($tenant->userStatus == USER_STATUS_DELETED)
+                                                            <span class="bg-red-transparent radius-4 px-2 py-1 red-color font-13">{{ __('Deleted') }}</span>
+                                                        @else
+                                                            <span class="bg-blue-transparent radius-4 px-2 py-1 blue-color font-13">{{ __('Unknown') }}</span>
+                                                        @endif
+
+                                                        @if ($tenant->userStatus == USER_STATUS_INACTIVE && $tenant->status != TENANT_STATUS_CLOSE)
+                                                            <form action="{{ route('owner.tenant.portal-access.activate', $tenant->id) }}" method="POST" class="d-inline">
+                                                                @csrf
+                                                                <button type="submit" class="theme-btn w-auto" title="{{ __('Activate Portal Login') }}">{{ __('Activate Portal Login') }}</button>
+                                                            </form>
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                                <div class="row account-settings-info-item">
+                                                    <div class="col-md-6 col-lg-4 col-xl-4 col-xxl-2">
                                                         <p class="color-heading">{{ __('Name') }}:</p>
                                                     </div>
                                                     <div class="col-md-6 col-lg-8 col-xl-8 col-xxl-10">

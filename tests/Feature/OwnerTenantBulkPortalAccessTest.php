@@ -23,9 +23,11 @@ class OwnerTenantBulkPortalAccessTest extends TestCase
         $owner = $this->createOwnerUser('owner1@example.test');
         [$firstUser, $firstTenant] = $this->createTenantForOwner($owner->id, [
             'email' => 'draft-one@example.test',
+            'email_verified_at' => null,
         ]);
         [$secondUser, $secondTenant] = $this->createTenantForOwner($owner->id, [
             'email' => 'draft-two@example.test',
+            'email_verified_at' => null,
         ]);
 
         $response = $this->actingAs($owner)
@@ -52,7 +54,7 @@ class OwnerTenantBulkPortalAccessTest extends TestCase
         Mail::assertSent(TenantPortalActionMail::class, 2);
     }
 
-    public function test_bulk_portal_access_skips_ineligible_and_out_of_scope_tenants(): void
+    public function test_bulk_portal_access_targets_any_unverified_tenant_and_skips_verified_or_out_of_scope_users(): void
     {
         Mail::fake();
         $this->enableTenantPortalMail();
@@ -61,22 +63,33 @@ class OwnerTenantBulkPortalAccessTest extends TestCase
         $otherOwner = $this->createOwnerUser('owner3@example.test');
 
         [, $draftTenant] = $this->createTenantForOwner($owner->id, [
-            'email' => 'eligible@example.test',
+            'email' => 'eligible-draft@example.test',
+            'email_verified_at' => null,
         ]);
         [, $activeTenant] = $this->createTenantForOwner($owner->id, [
-            'email' => 'active@example.test',
+            'email' => 'eligible-active@example.test',
+            'email_verified_at' => null,
+        ], [
+            'status' => TENANT_STATUS_ACTIVE,
+        ]);
+        [, $verifiedTenant] = $this->createTenantForOwner($owner->id, [
+            'email' => 'verified@example.test',
+            'email_verified_at' => now(),
         ], [
             'status' => TENANT_STATUS_ACTIVE,
         ]);
         [, $missingEmailTenant] = $this->createTenantForOwner($owner->id, [
             'email' => '',
+            'email_verified_at' => null,
         ]);
         [, $deletedUserTenant] = $this->createTenantForOwner($owner->id, [
             'email' => 'deleted@example.test',
+            'email_verified_at' => null,
             'status' => USER_STATUS_DELETED,
         ]);
         [, $foreignTenant] = $this->createTenantForOwner($otherOwner->id, [
             'email' => 'foreign@example.test',
+            'email_verified_at' => null,
         ]);
 
         $response = $this->actingAs($owner)
@@ -85,6 +98,7 @@ class OwnerTenantBulkPortalAccessTest extends TestCase
                 'tenant_ids' => [
                     $draftTenant->id,
                     $activeTenant->id,
+                    $verifiedTenant->id,
                     $missingEmailTenant->id,
                     $deletedUserTenant->id,
                     $foreignTenant->id,
@@ -94,15 +108,16 @@ class OwnerTenantBulkPortalAccessTest extends TestCase
         $response
             ->assertOk()
             ->assertJsonPath('status', true)
-            ->assertJsonPath('data.sent_count', 1)
+            ->assertJsonPath('data.sent_count', 2)
             ->assertJsonPath('data.skipped_count', 4);
 
-        Mail::assertSent(TenantPortalActionMail::class, 1);
+        Mail::assertSent(TenantPortalActionMail::class, 2);
 
         $results = collect($response->json('data.results'));
 
         $this->assertSame('sent', $results->firstWhere('tenant_id', $draftTenant->id)['status']);
-        $this->assertSame('skipped', $results->firstWhere('tenant_id', $activeTenant->id)['status']);
+        $this->assertSame('sent', $results->firstWhere('tenant_id', $activeTenant->id)['status']);
+        $this->assertSame('skipped', $results->firstWhere('tenant_id', $verifiedTenant->id)['status']);
         $this->assertSame('skipped', $results->firstWhere('tenant_id', $missingEmailTenant->id)['status']);
         $this->assertSame('skipped', $results->firstWhere('tenant_id', $deletedUserTenant->id)['status']);
         $this->assertSame('skipped', $results->firstWhere('tenant_id', $foreignTenant->id)['status']);

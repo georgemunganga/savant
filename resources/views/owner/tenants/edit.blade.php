@@ -96,6 +96,11 @@
                                                     <div
                                                         class="add-property-inner-box bg-white theme-border radius-4 p-20 pb-0 mb-25">
                                                         <div class="tenants-inner-box-block">
+                                                            @if (($tenant->userStatus ?? null) == USER_STATUS_INACTIVE && $tenant->status != TENANT_STATUS_CLOSE)
+                                                                <div class="alert alert-warning mb-25">
+                                                                    {{ __('This tenant record is active, but portal login is currently inactive. Activate portal login from the tenant profile page if this tenant should be able to sign in again.') }}
+                                                                </div>
+                                                            @endif
                                                             <div class="add-property-title border-bottom pb-25 mb-25">
                                                                 <h4>{{ __('Personal Information') }}</h4>
                                                             </div>

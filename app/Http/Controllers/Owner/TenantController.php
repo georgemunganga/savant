@@ -173,6 +173,16 @@ class TenantController extends Controller
         return $this->tenantService->bulkPortalAccessStore($request);
     }
 
+    public function activatePortalAccess($id)
+    {
+        return $this->tenantService->activatePortalAccess((int) $id);
+    }
+
+    public function updatePortalAccessStatus(Request $request, $id)
+    {
+        return $this->tenantService->updatePortalAccessStatus((int) $id, (int) $request->input('status', USER_STATUS_INACTIVE));
+    }
+
     public function edit($id)
     {
         $data['pageTitle'] = __('Edit Tenant');
