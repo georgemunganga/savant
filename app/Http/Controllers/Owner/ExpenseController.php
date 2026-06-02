@@ -33,6 +33,7 @@ class ExpenseController extends Controller
     public function details($id)
     {
         $data = $this->expenseService->getById($id);
+        $data->expense_date = optional($data->expense_date)->format('Y-m-d');
         $propertyService  = new PropertyService; // PropertyService
         $data->units = $propertyService->getUnitsByPropertyId($data->property_id)->getData()->data;
         return $this->success($data);

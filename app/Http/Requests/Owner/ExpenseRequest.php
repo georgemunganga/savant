@@ -29,6 +29,7 @@ class ExpenseRequest extends FormRequest
     {
         $rules =  [
             'name' => 'required|min:2|max:255',
+            'expense_date' => 'required|date',
             'property_id' => 'required',
             'property_unit_id' => 'required',
             'expense_type_id' => 'required',

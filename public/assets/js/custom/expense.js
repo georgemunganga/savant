@@ -40,6 +40,9 @@ $('#addTypeModal').on('hidden.bs.modal', function () {
 
 $('.addExpenses').on('click', function () {
     var selector = $('#addExpensesModal');
+    selector.find('form').trigger('reset');
+    selector.find('.expense_date').val(new Date().toISOString().slice(0, 10));
+    selector.find('.unitOption').html('<option value="">--Select Option--</option>');
     selector.modal('show')
 })
 
@@ -52,6 +55,7 @@ function getDataEditRes(response) {
     selector.find('.is-invalid').removeClass('is-invalid');
     selector.find('.error-message').remove();
     selector.find('.id').val(response.data.id)
+    selector.find('.expense_date').val(response.data.expense_date)
     selector.find('.name').val(response.data.name)
     selector.find('.property_id').val(response.data.property_id)
     selector.find('.expense_type_id').val(response.data.expense_type_id)
@@ -103,6 +107,7 @@ $('#expensesDatatable').DataTable({
     },
     columns: [
         { "data": "name" },
+        { "data": "expense_date" },
         { "data": "property" },
         { "data": "expense_type_name" },
         { "data": "responsibility" },

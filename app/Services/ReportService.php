@@ -87,9 +87,9 @@ class ReportService
         $expenses = Expense::query()
             ->select(
                 DB::raw('sum(total_amount) as `expense`'),
-                DB::raw("DATE_FORMAT(created_at,'%Y-%m') as month"),
+                DB::raw("DATE_FORMAT(expense_date,'%Y-%m') as month"),
             )
-            ->groupBy(DB::raw('YEAR(created_at),MONTH(created_at)'))
+            ->groupBy(DB::raw('YEAR(expense_date),MONTH(expense_date)'))
             ->get();
 
         foreach ($expenses as $expense) {
@@ -130,7 +130,7 @@ class ReportService
             ->join('properties', 'expenses.property_id', '=', 'properties.id')
             ->join('property_units', 'expenses.property_unit_id', '=', 'property_units.id')
             ->where('expenses.owner_user_id', getOwnerUserId())
-            ->select('expenses.name',  'expenses.total_amount', 'expenses.created_at', 'properties.name as property_name', 'property_units.unit_name');
+            ->select('expenses.name',  'expenses.total_amount', 'expenses.expense_date', 'properties.name as property_name', 'property_units.unit_name');
 
         if ($request['property_id'] != null) {
             $expenses->where('expenses.property_id', $request['property_id']);
@@ -141,9 +141,7 @@ class ReportService
         }
 
         if ($request['start_date'] != null && $request['end_date'] != null) {
-            $startDate = date('Y-m-d H:i:s', strtotime($request['start_date']));
-            $endDate = date('Y-m-d H:i:s', strtotime($request['end_date'] . ' 23:59:59'));
-            $expenses->whereBetween('expenses.created_at', [$startDate, $endDate]);
+            $expenses->whereBetween('expenses.expense_date', [$request['start_date'], $request['end_date']]);
         }
 
         return datatables($expenses)
@@ -158,7 +156,7 @@ class ReportService
                 return $expense->unit_name;
             })
             ->addColumn('date', function ($item) {
-                return $item->created_at->format('Y-m-d');
+                return optional($item->expense_date)->format('Y-m-d');
             })
             ->addColumn('amount', function ($expense) {
                 return currencyPrice($expense->total_amount);

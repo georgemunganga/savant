@@ -26,7 +26,7 @@ class ExpenseService
     public function getAllExpenses()
     {
         $data = Expense::where('owner_user_id', getOwnerUserId())->get();
-        return $data?->makeHidden(['created_at', 'updated_at', 'deleted_at']);
+        return $data?->makeHidden(['updated_at', 'deleted_at']);
     }
 
     public function getById($id)
@@ -39,6 +39,9 @@ class ExpenseService
         $expense = Expense::query()->where('owner_user_id', getOwnerUserId());
 
         return datatables($expense)
+            ->addColumn('expense_date', function ($expense) {
+                return optional($expense->expense_date)->format('Y-m-d');
+            })
             ->addColumn('property', function ($expense) {
                 return '<h6>' . @$expense->property->name . '</h6><p class="font-13">' . @$expense->propertyUnit->unit_name . '</p>';
             })
@@ -78,6 +81,7 @@ class ExpenseService
                 $expense = new Expense();
             }
             $expense->name = $request->name;
+            $expense->expense_date = $request->expense_date;
             $expense->property_id = $request->property_id;
             $expense->owner_user_id = getOwnerUserId();
             $expense->property_unit_id = $request->property_unit_id;

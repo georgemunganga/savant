@@ -40,6 +40,7 @@
                                 <thead>
                                     <tr>
                                         <th>{{ __('Name') }}</th>
+                                        <th>{{ __('Date') }}</th>
                                         <th>{{ __('Property') }}</th>
                                         <th>{{ __('Expenses Type') }}</th>
                                         <th>{{ __('Responsibility') }}</th>
@@ -70,7 +71,13 @@
                     <div class="modal-body">
                         <div class="modal-inner-form-box border-bottom mb-25">
                             <div class="row">
-                                <div class="col-md-12 mb-25">
+                                <div class="col-md-6 mb-25">
+                                    <label
+                                        class="label-text-title color-heading font-medium mb-2">{{ __('Expense Date') }}</label>
+                                    <input type="date" name="expense_date" class="form-control expense_date"
+                                        value="{{ now()->toDateString() }}">
+                                </div>
+                                <div class="col-md-6 mb-25">
                                     <label
                                         class="label-text-title color-heading font-medium mb-2">{{ __('Name') }}</label>
                                     <input type="text" name="name" class="form-control name"
@@ -191,7 +198,12 @@
                     <div class="modal-body">
                         <div class="modal-inner-form-box border-bottom mb-25">
                             <div class="row">
-                                <div class="col-md-12 mb-25">
+                                <div class="col-md-6 mb-25">
+                                    <label
+                                        class="label-text-title color-heading font-medium mb-2">{{ __('Expense Date') }}</label>
+                                    <input type="date" name="expense_date" class="form-control expense_date">
+                                </div>
+                                <div class="col-md-6 mb-25">
                                     <label
                                         class="label-text-title color-heading font-medium mb-2">{{ __('Name') }}</label>
                                     <input type="text" name="name" class="form-control name"

@@ -12,7 +12,8 @@ class Expense extends Model
     use HasFactory, SoftDeletes;
 
     protected $casts = [
-        'responsibilities' => 'object'
+        'responsibilities' => 'object',
+        'expense_date' => 'date',
     ];
     
     public function property(): BelongsTo
